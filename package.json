@@ -1,0 +1,28 @@
+{
+  "name": "tfg_chantada",
+  "version": "1.0.0",
+  "description": "Requirements:",
+  "homepage": "https://github.com/pabloChantada/TFG_Chantada#readme",
+  "bugs": {
+    "url": "https://github.com/pabloChantada/TFG_Chantada/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pabloChantada/TFG_Chantada.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "minecraft-data": "^3.101.0",
+    "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5"
+  },
+  "overrides": {
+    "axios": "^1.7.9"
+  }
+}
