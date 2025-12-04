@@ -1,111 +1,105 @@
 const mineflayer = require('mineflayer')
-const pathfinder = require('mineflayer-pathfinder').pathfinder
+const pathfinder = require('mineflayer-pathfinder'). pathfinder
 const Movements = require('mineflayer-pathfinder').Movements
 const { GoalNear } = require('mineflayer-pathfinder').goals
 const Vec3 = require('vec3')
+const inventoryViewer = require('mineflayer-web-inventory')
+
+/**
+ * We use async/await to execute crafting steps sequentially.
+ * The bot will craft a wooden pickaxe when a player sends "craft" in chat.
+ * WE ASSUME THE BOT HAS LOGS AND A CRAFTING TABLE IN ITS INVENTORY.
+ */
 
 const bot = mineflayer.createBot({
     host: 'localhost',
-    port: 63021,
+    port: 64183,
     username: 'crafterBot',
     version: '1.20.1',
     auth: 'offline',
 })
 
+inventoryViewer(bot)
 bot.loadPlugin(pathfinder)
 
-function craftWoodenPickaxe() {
-    // The crafting table is set 1 block east of the bot's spawn position
+async function craftWoodenPickaxe() {
+    const mcData = require('minecraft-data')(bot.version)
+    
+    // Get item IDs using minecraft-data
+    const planksId = mcData.itemsByName.oak_planks.id
+    const sticksId = mcData.itemsByName.stick.id
+    const woodenPickaxeId = mcData.itemsByName.wooden_pickaxe.id
+
     const craftingTablePosition = bot.entity.position.offset(1, 0, 0)
 
-    // Check if a crafting table already exists at the target position
-    const craftingTableBlock = bot.blockAt(craftingTablePosition)
+    // Set up pathfinder
+    const movements = new Movements(bot, mcData)
+    bot.pathfinder.setMovements(movements)
 
-    function placeAndActivateCraftingTable(callback) {
-        if (craftingTableBlock && craftingTableBlock.name === 'crafting_table') {
-            // Crafting table already placed
-            bot.chat('Crafting table already placed at the position.')
-            callback() // Proceed to crafting steps
-        } else {
-            // Find the crafting table in the bot's inventory
-            const craftingTable = bot.inventory.items().find(item => item.name === 'crafting_table')
-            if (!craftingTable) {
+    try {
+        // Move near the crafting table position
+        await bot.pathfinder.goto(new GoalNear(craftingTablePosition. x, craftingTablePosition.y, craftingTablePosition.z, 1))
+
+        // Check if crafting table exists or place it
+        let craftingTableBlock = bot.blockAt(craftingTablePosition)
+        
+        if (!craftingTableBlock || craftingTableBlock.name !== 'crafting_table') {
+            const craftingTableItem = bot.inventory.items().find(item => item.name === 'crafting_table')
+            if (! craftingTableItem) {
                 bot.chat('No crafting table in inventory.')
                 return
             }
 
-            // Equip and place the crafting table
-            bot.equip(craftingTable, 'hand', (equipErr) => {
-                if (equipErr) {
-                    bot.chat('Failed to equip crafting table.')
-                    return
-                }
-
-                // Place the crafting table on the ground
-                bot.placeBlock(bot.blockAt(craftingTablePosition.offset(0, -1, 0)), new Vec3(0, 1, 0), (placeErr) => {
-                    if (placeErr) {
-                        bot.chat('Failed to place crafting table.')
-                        return
-                    }
-
-                    // Proceed to crafting after successful placement
-                    callback()
-                })
-            })
+            await bot.equip(craftingTableItem, 'hand')
+            const blockBelow = bot.blockAt(craftingTablePosition. offset(0, -1, 0))
+            await bot.placeBlock(blockBelow, new Vec3(0, 1, 0))
+            bot.chat('Crafting table placed.')
+        } else {
+            bot.chat('Crafting table already placed.')
         }
-    }
 
-    function craftItems() {
-        // Wait and activate crafting table
-        const craftingTableBlock = bot.blockAt(craftingTablePosition)
-        bot.activateBlock(craftingTableBlock)
+        // Update the crafting table block reference
+        craftingTableBlock = bot.blockAt(craftingTablePosition)
 
-        // Obtain recipes for planks, sticks, and wooden pickaxe
-        const planks = bot.recipesFor(5, null, 4, null)
-        const sticks = bot.recipesFor(280, null, 4, null)
-        const woodenPickaxe = bot.recipesFor(270, null, 1, craftingTableBlock)
-
-        if (planks.length === 0 || sticks.length === 0 || woodenPickaxe.length === 0) {
-            bot.chat('Missing recipes for crafting.')
+        // Step 1: Craft planks (can be done without crafting table)
+        // recipesFor -> (resultItemID, resultMetadata, resultCount, craftingTableBlock)
+        // Returns a list of Recipe instances that you could use to craft itemType with metadata.
+        // This list is all the ways you could craft that item
+        const planksRecipes = bot.recipesFor(planksId, null, 1, null)
+        if (planksRecipes.length === 0) {
+            bot. chat('No recipe found for planks.  Do you have logs?')
             return
         }
+        await bot.craft(planksRecipes[0], 4, null) // Craft 4 times to get 16 planks
+        bot.chat('Crafted planks.')
 
-        // Craft planks -> sticks -> pickaxe in sequence
-        bot.craft(planks[0], 4, null, (plankErr) => {
-            if (plankErr) {
-                bot.chat('Failed to craft planks.')
-                return
-            }
+        // Step 2: Craft sticks (can be done without crafting table)
+        const sticksRecipes = bot.recipesFor(sticksId, null, 1, null)
+        if (sticksRecipes.length === 0) {
+            bot.chat('No recipe found for sticks.')
+            return
+        }
+        await bot.craft(sticksRecipes[0], 1, null) // Craft sticks
+        bot.chat('Crafted sticks.')
 
-            bot.craft(sticks[0], 4, null, (stickErr) => {
-                if (stickErr) {
-                    bot.chat('Failed to craft sticks.')
-                    return
-                }
+        // Step 3: Craft wooden pickaxe (requires crafting table)
+        const pickaxeRecipes = bot.recipesFor(woodenPickaxeId, null, 1, craftingTableBlock)
+        if (pickaxeRecipes.length === 0) {
+            bot. chat('No recipe found for wooden pickaxe.  Check materials.')
+            return
+        }
+        await bot.craft(pickaxeRecipes[0], 1, craftingTableBlock)
+        bot.chat('Successfully crafted wooden pickaxe!')
 
-                bot.craft(woodenPickaxe[0], 1, craftingTableBlock, (pickErr) => {
-                    if (pickErr) {
-                        bot.chat('Failed to craft wooden pickaxe.')
-                    } else {
-                        bot.chat('Successfully crafted wooden pickaxe.')
-                    }
-                })
-            })
-        })
+    } catch (err) {
+        bot.chat(`Error: ${err.message}`)
+        console.error(err)
     }
-
-    // Move to the crafting table position before placing/activating it
-    const mcData = require('minecraft-data')(bot.version)
-    const movements = new Movements(bot, mcData)
-    bot.pathfinder.setMovements(movements)
-
-    bot.pathfinder.goto(new GoalNear(craftingTablePosition.x, craftingTablePosition.y, craftingTablePosition.z, 1), () => {
-        placeAndActivateCraftingTable(craftItems)
-    })
 }
 
 bot.once('spawn', () => {
-    bot.on('chat', (username, message) => {
+    bot. on('chat', (username, message) => {
+        if (username === bot.username) return // Ignore own messages
         if (message === 'craft') {
             craftWoodenPickaxe()
         }
