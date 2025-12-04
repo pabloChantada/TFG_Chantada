@@ -18,11 +18,13 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "canvas": "^3.2.0",
     "minecraft-data": "^3.101.0",
     "mineflayer": "^4.33.0",
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
-    "mineflayer-web-inventory": "^1.8.5"
+    "mineflayer-web-inventory": "^1.8.5",
+    "prismarine-viewer": "^1.33.0"
   },
   "overrides": {
     "socket.io": "^4.8.1",

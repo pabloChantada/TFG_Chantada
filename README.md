@@ -18,6 +18,17 @@ npm install mineflayer
 npm install mineflayer-pathfinder
 ```
 
+**Install mineflayer-web-inventory**
+```bash
+npm install mineflayer-web-inventor
+```
+
+**Install prismarine-viewer**
+```bash
+npm install prismarine-viewer
+```
+
+
 # Current Files
 - Basic interaction and set-up
 - Movements testing

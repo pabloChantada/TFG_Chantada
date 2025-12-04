@@ -3,6 +3,7 @@ const pathfinder = require('mineflayer-pathfinder').pathfinder
 const Vec3 = require('vec3')
 const inventoryViewer = require('mineflayer-web-inventory')
 const collectBlock = require('mineflayer-collectblock').plugin
+const mineflayerViewer = require('prismarine-viewer').mineflayer
 
 /**
  * The bot will craft a wooden pickaxe when a player sends "craft" in chat.
@@ -45,7 +46,17 @@ function runBot() {
 
     bot.once('spawn', () => {
         bot.chat('Bot spawned')  
-        
+        mineflayerViewer(bot, { port: 3001, firstPerson: true }) // Start the viewing server on port 3001, 3000 is reserved for inventory
+
+        // Draw the path followed by the bot
+        const path = [bot.entity.position.clone()]
+        bot.on('move', () => {
+            if (path[path.length - 1].distanceTo(bot.entity.position) > 1) {
+            path.push(bot.entity.position.clone())
+            bot.viewer.drawLine('path', path)
+            }
+        })
+
         bot.on('chat', (username, message) => {
             if (username === bot.username) return
             
