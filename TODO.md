@@ -1,0 +1,5 @@
+- [ ] Probar langchain 
+- [ ] Llegar hasta hierro con HTN (usando replanificacion)
+    - [ ] Arreglar HTN
+    - Capax de hacer acciones y replanificar -> Paper (primero, luego mirar los otros 2)
+- [ ] Probar la api de mindcraft
