@@ -1,6 +1,7 @@
 # BASIC GUIDE
 
-References: [Mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master)
+References: 
+[Mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master)
 [Mindcraft](https://github.com/mindcraft-bots/mindcraft)
 [Baritone](https://github.com/cabaletta/baritone/tree/1.19.4)
 [Mineflayer Web Inventory](https://github.com/ImHarvol/mineflayer-web-inventory)
@@ -32,3 +33,9 @@ npm install prismarine-viewer
 # Current Files
 - Basic interaction and set-up
 - Movements testing
+
+## License
+
+MIT License - see [LICENSE](LICENSE)
+
+Built with: [Mineflayer](https://github.com/PrismarineJS/mineflayer/tree/master), [Mindcraft](https://github.com/mindcraft-bots/mindcraft), [repo3](url)
