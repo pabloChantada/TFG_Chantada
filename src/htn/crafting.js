@@ -1,33 +1,41 @@
 const mineflayer = require('mineflayer')
-const { pathfinder, Movements, goals: { GoalBlock } } = require('mineflayer-pathfinder')
-const Vec3 = require('vec3')
-const inventoryViewer = require('mineflayer-web-inventory')
+const { pathfinder } = require('mineflayer-pathfinder')
 const collectBlock = require('mineflayer-collectblock').plugin
-const mineflayerViewer = require('prismarine-viewer').mineflayer
+const inventoryViewer = require('mineflayer-web-inventory')
+const Brain = require('./brain')
 
 const bot = mineflayer.createBot({
-    host: 'localhost',
-    port: parseInt(process.argv[2]) || 25565, // Pass port as command line argument, or use default 25565
-    username: 'collecterBot',
-    version: '1.20.1',
-    auth: 'offline',
+  host: 'localhost',
+  port: parseInt(process.argv[2]) || 25565,
+  username: 'IronBot',
+  version: '1.20.1',
+  auth: 'offline',
 })
-
-// Base de conocimientos simplificada (Mapeo Item -> Bloque para minar)
-const HARVEST_MAP = {
-    'oak_log': 'oak_log',
-    'cobblestone': 'stone',
-    'raw_iron': 'iron_ore' // Or deepslate_iron_ore
-}
 
 bot.once('spawn', () => {
-    // Inicializar plugins
-    bot.loadPlugin(pathfinder)
-    
-    bot.on('chat', async (username, message) => {
-        if (message === 'iron_pickaxe') {
-            // META SUPREMA: Quiero un pico de hierro
-            await brain.obtainItem('iron_pickaxe', 1)
-        }
-    })
+  bot.loadPlugin(pathfinder)
+  bot.loadPlugin(collectBlock)
+
+  inventoryViewer(bot)
+
+  const mcData = require('minecraft-data')(bot.version)
+  const brain = new Brain(bot, mcData)
+
+  console.log("Bot listo. Escribe 'stone_pickaxe' en el chat (objetivo actual).")
+
+  bot.on('chat', async (username, message) => {
+    if (message === 'stone_pickaxe') {
+      bot.chat('Entendido, voy por un Pico de Piedra.')
+      try {
+        await brain.obtainItem('stone_pickaxe', 1)
+        bot.chat('¡Misión cumplida! Tengo el pico de piedra.')
+      } catch (err) {
+        bot.chat(`Fallé: ${err.message}`)
+        console.error(err)
+      }
+    }
+  })
 })
+
+bot.on('error', console.log)
+bot.on('kicked', console.log)

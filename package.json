@@ -20,6 +20,8 @@
   "dependencies": {
     "canvas": "^3.2.0",
     "child_process": "^1.0.2",
+    "lodash.reduce": "^4.6.0",
+    "minecraft-assets": "^1.17.0",
     "minecraft-data": "^3.101.0",
     "mineflayer": "^4.33.0",
     "mineflayer-collectblock": "^1.6.0",

@@ -17,7 +17,23 @@
 
     - ~~En el caso del AG no se podria aplicar a un entorno aleatorio, tendria que ser semi-determinista~~
 
+- Las variantes (deepslate) son relevantes ? Para una tarea muy compleja o un endgame puede. Pero me parece un execeso de complejidad para poco retorno.
+
+
 # OBSERVACIONES
 - Para objetivos como minar hierro, el standart es usar LLM's. Pero para un uso local es imposible por el costo computacional. 
 Por ello se debe usar una estrategia menos eficiente (straight minning), antes que buscar una cueva por ejemplo que requiere una procesamiento
 "pixel a pixel"
+
+En la seleccion de estrategias podemos:
+ - Seleccionar solo los bloques que queremos minar
+ - O considerar que si tiene ore, debemos hacer straight mining
+
+Yo me quedaria con una sola. Pero no se si es mejor hacer un filtrado (nos permite simpleficar
+las tareas ?) o usar una aproximacion mas grnade con el __.includes__
+
+if (MINING_ORES[blockName] || blockName.includes('ore')) {
+        targetBlock = await this.strategies.findNaturalOrStripMine(blockName)
+} else {
+        targetBlock = await this.strategies.findVisible(blockName)
+}
