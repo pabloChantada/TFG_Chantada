@@ -38,3 +38,14 @@ if (MINING_ORES[blockName] || blockName.includes('ore')) {
 } else {
         targetBlock = await this.strategies.findVisible(blockName)
 }
+
+
+---
+
+En el LLM, el analisis de la vision es usando una prompt al LLM.
+```javascript
+const result = await this.agent.prompter.promptVision(messages, imageBuffer);
+```
+
+En nuestro caso sería entrenar un modelo simple de vision ? Seria eliminar el endpoint de un LLM
+por una red convolucional/autoencoder -> [Dataset de bloques de minecraft](https://www.kaggle.com/datasets/urvishahir/minecraft-block-textures-dataset)
