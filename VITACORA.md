@@ -17,9 +17,10 @@
 
     - ~~En el caso del AG no se podria aplicar a un entorno aleatorio, tendria que ser semi-determinista~~
 
-- Las variantes (deepslate) son relevantes ? Para una tarea muy compleja o un endgame puede. Pero me parece un execeso de complejidad para poco retorno.
-- La mesa de crafteo seria mejor guardar la posición cuando la colocamos,
-- O buscarla en un rango amplio.
+-~~Las variantes (deepslate) son relevantes ? Para una tarea muy compleja o un endgame puede. Pero me parece un execeso de complejidad para poco retorno. ~~
+
+- La mesa de crafteo seria mejor guardar la posición cuando la colocamos, o  buscarla en un rango amplio.
+    -> guardar la posicion
 
 # OBSERVACIONES
 - Para objetivos como minar hierro, el standart es usar LLM's. Pero para un uso local es imposible por el costo computacional. 
@@ -49,3 +50,8 @@ const result = await this.agent.prompter.promptVision(messages, imageBuffer);
 
 En nuestro caso sería entrenar un modelo simple de vision ? Seria eliminar el endpoint de un LLM
 por una red convolucional/autoencoder -> [Dataset de bloques de minecraft](https://www.kaggle.com/datasets/urvishahir/minecraft-block-textures-dataset)
+
+---
+
+- [x] Coger el viewer de vision multiagente de los LLM's 
+    - Hay que ir testeando

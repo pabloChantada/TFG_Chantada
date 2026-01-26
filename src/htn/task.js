@@ -1,9 +1,19 @@
-// ==========================================================
-// --- FUNCIONES AUXILIARES ---
-// =========================================================
+import pkg from 'mineflayer-pathfinder'
+const { goals } = pkg
+import Vec3 from 'vec3'
 
+const DROPS = {
+    stone: 'cobblestone',
+    grass_block: 'dirt',
+    iron_ore: 'raw_iron',
+    gold_ore: 'raw_gold',
+    copper_ore: 'raw_copper',
+    coal_ore: 'coal',
+    diamond_ore: 'diamond',
+    oak_log: 'oak_log'
+}
 
-async function collectResource(blockName, count) {
+async function collectResource(bot, mcData, blockName, count) {
     const blockId = mcData.blocksByName[blockName].id
     const itemName = DROPS[blockName] || blockName
     const itemId = mcData.itemsByName[itemName].id
@@ -34,7 +44,7 @@ async function collectResource(blockName, count) {
     }
 }
 
-async function smartCraft(itemName, amount) {
+async function smartCraft(bot, mcData, itemName, amount) {
     const item = mcData.itemsByName[itemName]
     const craftingTable = bot.findBlock({ matching: mcData.blocksByName.crafting_table.id, maxDistance: 32 })
 
@@ -53,10 +63,11 @@ async function smartCraft(itemName, amount) {
         }
     }
 
-    await bot.craft(recipe, amount, craftingTable)
+    const tableToUse = recipe.requiresTable ? craftingTable : null
+    await bot.craft(recipe, amount, tableToUse)
 }
 
-async function placeBlock(blockName) {
+async function placeBlock(bot, mcData, blockName) {
     const itemId = mcData.itemsByName[blockName].id
     const item = bot.inventory.findInventoryItem(itemId)
     
@@ -85,12 +96,30 @@ async function placeBlock(blockName) {
     await bot.equip(item, 'hand')
     await bot.lookAt(groundBlock.position.offset(0.5, 1, 0.5), true)
     await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
+
+    // Si es una mesa o un horno, guardar posición
+    const fs = await import('fs')
+    const path = 'my_agent/memory.json'
+    
+    let positions = {}
+    if (fs.existsSync(path)) {
+        positions = JSON.parse(fs.readFileSync(path, 'utf8'))
+    }
+
+    if (blockName === 'crafting_table') {
+        positions.crafting_table = targetPos
+    }
+    if (blockName === 'furnace') {
+        positions.furnace = targetPos
+    }
+
+    fs.writeFileSync(path, JSON.stringify(positions, null, 2))
 }
 
 /**
  * Función de Fundición (Batch Processing)
  */
-async function smeltItem(itemName, amountNeeded) {
+async function smeltItem(bot, mcData, itemName, amountNeeded) {
     const item = mcData.itemsByName[itemName];
     if (!item) throw new Error(`El item ${itemName} no existe en los datos.`);
 
@@ -143,12 +172,12 @@ async function smeltItem(itemName, amountNeeded) {
     furnace.close();
 }
 
-async function clearInventory() {
+async function clearInventory(bot) {
     const items = bot.inventory.items()
     for (const item of items) await bot.toss(item.type, null, item.count)
 }
 
-module.exports = {
+export {
     collectResource,
     smartCraft,
     placeBlock,
