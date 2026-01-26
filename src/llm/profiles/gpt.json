@@ -1,0 +1,7 @@
+{
+    "name": "gpt",
+
+    "model": {
+        "model": "gpt-4o-mini"
+    }
+}
