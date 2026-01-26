@@ -1,3 +1,15 @@
+# BITÁCORA
+
+## Sesión 2026-01-26
+
+- Recolección más robusta: en `src/htn/primitive_task.js` se mejoró `collectResource` con búsqueda por rango creciente (32→64→128), exploración aleatoria cuando no hay bloques visibles, y tolerancia a fallos.
+- Movimiento/minado más estable: `moveToBlock` usa `GoalNear` y `mineBlock` primero se acerca al bloque; si `collectBlock` falla, hace fallback a `bot.dig()`.
+- Fix del crafteo con mesa: `smartCraft` ahora se mueve a rango de interacción (~3) y usa la referencia correcta a la mesa al llamar a `craftItem`, mitigando `windowOpen timeout`.
+- Minería: se desactivó la heurística de “straight mining” (se dejó comentada) y se pasó a un enfoque “omnisciente” basado en `findBlock` + exploración (`src/htn/tasks/mining.js`).
+- Progresión: se reordenó el flujo para colocar el horno sólo cuando ya hay carbón/hierro y se va a fundir (`src/htn/tasks/progression.js`).
+- Mantenimiento: evento deprecated `physicTick`→`physicsTick` en `api_test/hello_world.js`.
+- Documentación: README raíz actualizado con guía completa de instalación/ejecución y referencias.
+
 # API's  
 - Mindflayer
     - The models used in the paper are kinda old (claude 3.5 and chatgpt 4o); using newer models in comparation may be interesting
@@ -19,8 +31,8 @@
 
 -~~Las variantes (deepslate) son relevantes ? Para una tarea muy compleja o un endgame puede. Pero me parece un execeso de complejidad para poco retorno. ~~
 
-- La mesa de crafteo seria mejor guardar la posición cuando la colocamos, o  buscarla en un rango amplio.
-    -> guardar la posicion
+-~~La mesa de crafteo seria mejor guardar la posición cuando la colocamos, o  buscarla en un rango amplio.> guardar la posicion~~
+        - **La posicion deberia ser por rango ? i.e: posicion en 32 bloques  o infinita ??**
 
 # OBSERVACIONES
 - Para objetivos como minar hierro, el standart es usar LLM's. Pero para un uso local es imposible por el costo computacional. 
