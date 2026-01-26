@@ -7,16 +7,19 @@
 --- 
 
 - [ ] Llegar hasta hierro de forma correcta
+    - [ ] Para obtener la piedra -> 360 sino vemos hacemos mineria hacia abajo
+    - [ ] Para hierro hacemos straight minning -> queda un fallo con la colacion en el horno ?
 - [ ] Comunicacion multiagente para hacer replanificacion
     - NOTA: esto es mas simple con los LLM's y podemos empezar por ahi
-- [ ] Coger el viewer de vision multiagente de los LLM's 
+- [x] Coger el viewer de vision multiagente de los LLM's 
+    - Hay que ir testeando
 
 ---
 - [ ] Hacer las recipies no hardcoded
 - [ ] No X-Ray, hacer "vision"
     - [ ] We can change the image size when capturing, or we can change it when processed it
-- [ ] Problema con las update del inventario e items
+- [x] Problema con las update del inventario e items
 - [ ] Hacer que la obtencion de objetos sea automatica
 - [x] Implementar replanificacion
-    - [ ] Comprobar
+    - [x] Comprobar -> la replanificacion es rara en el caso de minecraft, ya que seria repetir las acciones hasta que consigas lo que quieras. 
 
