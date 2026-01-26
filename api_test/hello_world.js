@@ -21,4 +21,4 @@ function lookAtNearestEntity() {
     bot.lookAt(playerPosition, true);
 }
 
-bot.on('physicTick', lookAtNearestEntity)
+bot.on('physicsTick', lookAtNearestEntity)

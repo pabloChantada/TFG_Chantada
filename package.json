@@ -12,26 +12,37 @@
   },
   "license": "ISC",
   "author": "",
-  "type": "commonjs",
+  "_comment": "Using ES modules to allow for top-level await",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "canvas": "^3.2.0",
+    "cheerio": "^1.2.0",
     "child_process": "^1.0.2",
+    "express": "^4.18.2",
+    "lodash.reduce": "^4.6.0",
+    "minecraft-assets": "^1.17.0",
     "minecraft-data": "^3.101.0",
     "mineflayer": "^4.33.0",
+    "mineflayer-armor-manager": "^2.0.1",
+    "mineflayer-auto-eat": "^5.0.3",
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-pvp": "^1.3.2",
     "mineflayer-web-inventory": "^1.8.5",
-    "prismarine-viewer": "^1.33.0"
+    "open": "^11.0.0",
+    "prismarine-viewer": "^1.33.0",
+    "socket.io-client": "^4.8.3",
+    "three": "^0.150.0"
   },
   "overrides": {
-    "socket.io": "^4.8.1",
     "ws": "^8.18.0",
     "cookie": "^0.7.2",
     "socket.io-parser": "^4.2.4",
+    "socket.io": "^4.7.2",
     "axios": "^1.7.9"
   }
 }
