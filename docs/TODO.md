@@ -30,3 +30,23 @@
 
 Notas:
 - En la obtención de materias primas aún se “raya” (loops). Prioridad: mejor exploración y condiciones de salida claras.
+
+export function getBiomeName(bot) {
+    /**
+     * Get the name of the biome the bot is in.
+     * @param {Bot} bot - The bot to get the biome for.
+     * @returns {string} - The name of the biome.
+     * @example
+     * let biome = world.getBiomeName(bot);
+     **/
+    const biomeId = bot.world.getBiome(bot.entity.position);
+    return mc.getAllBiomes()[biomeId].name;
+}
+
+esta funcion puede ayudar al conseguir madera
+
+
+[ ] Al asegurar mesa, hace la exploracion en vez de colocarla directamente 
+    [ ] Pues pueden romper la mesa de crafteo al parecer, considerar eso supongo
+[ ] El agua les revienta
+[ ] Las memorias hay que mejorarlas, seguramente sea por acceso a disco simultaneo ?
