@@ -54,7 +54,7 @@ export function getFullState(agent) {
             timeLabel
         },
         action: {
-            current: agent.isIdle() ? 'Idle' : agent.actions.currentActionLabel,
+            current: agent.isIdle() ? 'Idle' : (agent.actions?.currentActionLabel || 'Unknown'),
             isIdle: agent.isIdle()
         },
         surroundings: {
@@ -81,7 +81,7 @@ export function getFullState(agent) {
             entityTypes: getNearbyEntityTypes(bot).filter(t => t !== 'player' && t !== 'item'),
         },
         modes: {
-            summary: bot.modes.getMiniDocs()
+            summary: bot.modes?.getMiniDocs?.() || 'Unknown'
         }
     };
 

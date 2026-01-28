@@ -5,8 +5,9 @@ import prismarine_items from 'prismarine-item';
 import { pathfinder } from 'mineflayer-pathfinder';
 import { plugin as pvp } from 'mineflayer-pvp';
 import { plugin as collectblock } from 'mineflayer-collectblock';
-import { plugin as autoEat } from 'mineflayer-auto-eat';
 import plugin from 'mineflayer-armor-manager';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 const armorManager = plugin;
 let mc_version = settings.minecraft_version;
 let mcdata = null;
@@ -68,7 +69,18 @@ export function initBot(username) {
     bot.loadPlugin(pathfinder);
     bot.loadPlugin(pvp);
     bot.loadPlugin(collectblock);
-    bot.loadPlugin(autoEat);
+    
+    // Dynamically load autoEat to handle CJS/ESM compatibility
+    try {
+        const autoEatModule = require('mineflayer-auto-eat');
+        const autoEat = autoEatModule.plugin || autoEatModule.default || autoEatModule;
+        if (typeof autoEat === 'function') {
+            bot.loadPlugin(autoEat);
+        }
+    } catch (e) {
+        console.warn('Could not load mineflayer-auto-eat plugin:', e.message);
+    }
+    
     bot.loadPlugin(armorManager); // auto equip armor
     bot.once('resourcePack', () => {
         bot.acceptResourcePack();

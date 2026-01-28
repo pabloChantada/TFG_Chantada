@@ -1,6 +1,0 @@
-{
-    "name": "CustomAgent",    "custom_script": "my_agent/start.js",
-    "model": "",
-
-    "embedding": ""
-}

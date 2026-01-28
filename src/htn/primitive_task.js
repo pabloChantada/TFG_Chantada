@@ -90,7 +90,7 @@ async function nudgeForward(bot, ticks = 20) {
 }
 
 function getCraftingTable(bot, mcData, maxDistance = null) {
-    const path = 'my_agent/memory.json'
+    const path = `src/agents/memories/${bot.username}_memory.json`
 
     if (fs.existsSync(path)) {
         const memory = JSON.parse(fs.readFileSync(path, 'utf8'))
@@ -138,7 +138,7 @@ function getSmeltInputName(outputName) {
 }
 
 function getFurnace(bot, mcData, maxDistance = null) {
-    const path = 'my_agent/memory.json'
+    const path = `src/agents/memories/${bot.username}_memory.json`
 
     if (!fs.existsSync(path)) return null
 
@@ -293,12 +293,28 @@ async function placeBlock(bot, mcData, blockName) {
     if (targetBlock.type !== 0) await bot.dig(targetBlock)
 
     await bot.equip(item, 'hand')
-    await bot.lookAt(groundBlock.position.offset(0.5, 1, 0.5), true)
+    let lookBlock = await bot.lookAt(groundBlock.position.offset(0.5, 1, 0.5), true)
+    
+    // Esto deberia evitar que rompa mesas/hornos para colocar mesas/horno en su posicion
+    if (lookBlock === 'crafting_table' || lookBlock === 'furnace') {
+        await bot.nudgeForward(5)
+    }
+
     await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
 
     // Si es una mesa o un horno, guardar posición
     const fs = await import('fs')
-    const path = 'my_agent/memory.json'
+    const path = `src/agents/memories/${bot.username}_memory.json`
+    
+    console.log(`[placeBlock] Guardando posición de ${blockName} para usuario: ${bot.username}`)
+    console.log(`[placeBlock] Ruta: ${path}`)
+    console.log(`[placeBlock] Posición: ${JSON.stringify(targetPos)}`)
+    
+    // Crear directorio si no existe
+    const dir = path.substring(0, path.lastIndexOf('/'))
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+    }
     
     let positions = {}
     if (fs.existsSync(path)) {
@@ -307,12 +323,15 @@ async function placeBlock(bot, mcData, blockName) {
 
     if (blockName === 'crafting_table') {
         positions.crafting_table = targetPos
+        console.log(`[placeBlock] Mesa guardada`)
     }
     if (blockName === 'furnace') {
         positions.furnace = targetPos
+        console.log(`[placeBlock] Horno guardado`)
     }
 
     fs.writeFileSync(path, JSON.stringify(positions, null, 2))
+    console.log(`[placeBlock] Archivo guardado: ${path}`)
 }
 
 /**
