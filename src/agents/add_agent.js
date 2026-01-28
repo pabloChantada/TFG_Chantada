@@ -61,10 +61,10 @@ socket.on('connect', () => {
     console.log(`[INFO] Connected to server on port ${args.port}`);
     
     const settings = buildAgentSettings(args.name, args.type, {
-        minecraftHost: args.minecraftHost,
-        minecraftPort: args.minecraftPort,
-        loadMemory: args.loadMemory,
-        metricsPath: args.metricsPath
+        minecraftHost: args['minecraft-host'],
+        minecraftPort: args['minecraft-port'],
+        loadMemory: args['load-memory'],
+        metricsPath: args['metrics-path']
     });
     
     console.log(`[INFO] Creating ${args.type} agent: ${args.name}...`);
