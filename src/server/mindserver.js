@@ -7,16 +7,17 @@ import * as mindcraft from './mindcraft.js';
 import { readFileSync } from 'fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Mindserver is:
-// - central hub for communication between all agent processes
-// - api to control from other languages and remote users 
-// - host for webapp
+// Evaluation Server is:
+// - central hub for communication between all agent processes (HTN, RL, custom)
+// - api to control agents and collect metrics
+// - host for monitoring webapp
 
 let io;
 let server;
 const agent_connections = {};
 const agent_listeners = [];
 
+// A json file that specifies the configuration options for custom agents
 const settings_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/settings_spec.json'), 'utf8'));
 
 class AgentConnection {
@@ -35,22 +36,6 @@ class AgentConnection {
 export function registerAgent(settings, viewer_port) {
     let agentConnection = new AgentConnection(settings, viewer_port);
     agent_connections[settings.profile.name] = agentConnection;
-}
-
-function registerDynamicCustomAgent(agentName) {
-    // Find a custom agent template (external custom script)
-    const template = Object.values(agent_connections).find((conn) => {
-        const script = conn.settings?.profile?.custom_script;
-        return script === 'agents/start_htn.js';
-    });
-
-    if (!template) return false;
-
-    const cloned = JSON.parse(JSON.stringify(template.settings));
-    cloned.profile = cloned.profile || {};
-    cloned.profile.name = agentName;
-    registerAgent(cloned, template.viewer_port);
-    return true;
 }
 
 export function logoutAgent(agentName) {
@@ -116,13 +101,6 @@ export function createMindServer(host_public = false, port = 8080) {
         });
 
         socket.on('get-settings', (agentName, callback) => {
-            if (!agent_connections[agentName]) {
-                const registered = registerDynamicCustomAgent(agentName);
-                if (registered) {
-                    agentsStatusUpdate();
-                }
-            }
-
             if (agent_connections[agentName]) {
                 callback({ settings: agent_connections[agentName].settings });
             } else {

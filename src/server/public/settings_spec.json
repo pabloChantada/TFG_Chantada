@@ -1,0 +1,79 @@
+{
+    "profile": {
+        "type": "object",
+        "required": false,
+        "description": "Agent profile configuration including name and type (htn, rl, custom)"
+    },
+    "agent_type": {
+        "type": "string",
+        "description": "Type of agent: htn, rl, or custom",
+        "default": "htn",
+        "options": ["htn", "rl", "custom"]
+    },
+    "minecraft_version": {
+        "type": "string",
+        "description": "The version of Minecraft to use. Set to 'auto' to automatically detect the version.",
+        "default": "auto"
+    },
+    "host": {
+        "type": "string",
+        "description": "The minecraft server host address to connect to",
+        "default": "127.0.0.1"
+    },
+    "port": {
+        "type": "number",
+        "description": "The minecraft server port to connect to. -1 for auto-detect.",
+        "default": 25565
+    },
+    "auth": {
+        "type": "string",
+        "description": "The authentication method to use",
+        "default": "offline",
+        "options": ["offline", "microsoft"]
+    },
+    "load_memory": {
+        "type": "boolean",
+        "description": "Whether to load agent's previous memory from file",
+        "default": false
+    },
+    "init_message": {
+        "type": "string",
+        "description": "Optional initial message or command to send on startup",
+        "default": null
+    },
+    "chat_ingame": {
+        "type": "boolean",
+        "description": "Whether to show agent's messages in game chat",
+        "default": true
+    },
+    "narrate_behavior": {
+        "type": "boolean",
+        "description": "Whether to chat automatic behavior like 'Collecting wood', 'Mining stone', etc.",
+        "default": true
+    },
+    "render_bot_view": {
+        "type": "boolean",
+        "description": "Whether to render bot view for observation at localhost:3000+",
+        "default": true
+    },
+    "task": {
+        "type": "object",
+        "description": "Task configuration object. Structure depends on agent type.",
+        "default": null
+    },
+    "spawn_timeout": {
+        "type": "number",
+        "description": "Number of seconds to wait for bot spawn before throwing error",
+        "default": 30
+    },
+    "metrics_enabled": {
+        "type": "boolean",
+        "description": "Enable collection of performance metrics (steps, time, exploration)",
+        "default": true
+    },
+    "metrics_export_path": {
+        "type": "string",
+        "description": "Path to export metrics JSON files. Null for no export.",
+        "default": null
+    }
+}

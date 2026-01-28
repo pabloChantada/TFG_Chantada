@@ -149,7 +149,7 @@ async function ensureNearbyFurnace(bot, mcData, has, guards) {
     // Si no tenemos un horno cerca, lo creamos
     try {
         const fs = await import('fs')
-        const path = 'my_agent/memory.json'
+        const path = `src/agents/memories/${bot.username}_memory.json`
         let found = false
 
         if (fs.existsSync(path)) {

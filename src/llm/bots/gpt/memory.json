@@ -1,0 +1,21 @@
+{
+  "memory": "",
+  "turns": [
+    {
+      "role": "system",
+      "content": "Respond with hello world and your name"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello world, I'm gpt!"
+    },
+    {
+      "role": "user",
+      "content": "_Vakker_: cut down a tree"
+    }
+  ],
+  "self_prompting_state": 0,
+  "self_prompt": null,
+  "taskStart": 1769558797779,
+  "last_sender": null
+}

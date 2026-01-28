@@ -17,10 +17,10 @@ let mcData
 // --- LÓGICA DEL BOT ---
 // =========================================================
 
-export async function startHTN(bot) {
+export async function startHTN(bot, inventoryPort = 3001) {
     mcData = minecraftData(bot.version)
     
-    inventoryViewer(bot, { port: 3001 }) // Optional: might conflict with existing viewer
+    inventoryViewer(bot, { port: inventoryPort }) // Optional: might conflict with existing viewer
     // mineflayerViewer(bot, { port: 3001, firstPerson: true }) // Already handled by Mindcraft
     
     const defaultMove = new Movements(bot, mcData)
@@ -45,6 +45,7 @@ export async function startHTN(bot) {
 async function startFullProgression(bot) {
     try {
         await runFullProgression(bot, mcData)
+        await bot.quit()
     } catch (err) {
         bot.chat(`Proceso detenido: ${err.message}`)
         console.error(err)
