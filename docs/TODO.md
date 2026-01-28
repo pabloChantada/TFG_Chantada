@@ -50,3 +50,6 @@ esta funcion puede ayudar al conseguir madera
     [ ] Pues pueden romper la mesa de crafteo al parecer, considerar eso supongo
 [ ] El agua les revienta
 [ ] Las memorias hay que mejorarlas, seguramente sea por acceso a disco simultaneo ?
+
+Mundo de cuevas -> varios agentes -> maximizar la mineria de ores
+[ ] -> arreglar la exploracion, acciones, pasos
