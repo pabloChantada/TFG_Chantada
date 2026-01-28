@@ -13,7 +13,9 @@ export class HTNAgent extends BaseAgent {
     constructor(agentName) {
         super(agentName, 'htn');
         this.htnRunner = null;
+        this.lastPosition = null; // Track previous position for distance calc
         this.metrics = {
+            version: null,
             agent_name: agentName,
             agent_type: 'htn',
             task: null,
@@ -23,7 +25,9 @@ export class HTNAgent extends BaseAgent {
             time_elapsed_s: 0,
             steps_taken: 0,
             exploration_distance: 0,
-            actions: {},
+            actions: [], // Changed to array to store sequence of actions
+            action_counts: {}, // New object for counting occurrences
+            // Podemos hacer que esto sea de los fallos que ocurren durante la ejecución. i.e: se le rompe el pico
             errors: []
         };
         this.metricsExportPath = null;
@@ -42,7 +46,21 @@ export class HTNAgent extends BaseAgent {
         try {
             this.countId = countId;
             this.memoryPath = `src/agents/memories/${this.name}_memory.json`;
-            this.metricsExportPath = settings.metrics_export_path;
+            
+            // Set metrics export path - if it's a directory, add filename; if null or empty, set default
+            if (settings.metrics_export_path) {
+                const metricsPath = settings.metrics_export_path;
+                // If path ends with / or has no extension, treat as directory and add filename
+                if (metricsPath.endsWith('/') || !metricsPath.includes('.')) {
+                    this.metricsExportPath = `${metricsPath.replace(/\/$/, '')}/metrics_${this.name}_${Date.now()}.json`;
+                } else {
+                    this.metricsExportPath = metricsPath;
+                }
+            } else {
+                // Default metrics path with timestamp and agent name
+                this.metricsExportPath = `src/agents/metrics/metrics_${this.name}_${Date.now()}.json`;
+            }
+            
             this.metrics.task = settings.task?.goal || 'Default HTN progression';
             this.metrics.start_time = new Date().toISOString();
 
@@ -55,6 +73,23 @@ export class HTNAgent extends BaseAgent {
 
             // Connect to Minecraft
             await this.connectBot(settings);
+            
+            if (this.bot) {
+                this.lastPosition = this.bot.entity.position.clone();
+                
+                // Track movement distance
+                this.bot.on('move', () => {
+                    if (this.lastPosition) {
+                        const currentPos = this.bot.entity.position;
+                        const dist = this.lastPosition.distanceTo(currentPos);
+                        // Only add significant movement to avoid jitter
+                        if (dist > 0.05) { 
+                            this.metrics.exploration_distance += dist;
+                            this.lastPosition = currentPos.clone();
+                        }
+                    }
+                });
+            }
 
             // Setup viewer
             this.setupViewer(viewerPort);
@@ -62,6 +97,9 @@ export class HTNAgent extends BaseAgent {
             // Mock components required by getFullState
             this.bot.modes = { getMiniDocs: () => 'HTN Mode' };
             this.actions = { currentActionLabel: 'HTN Task Execution' };
+
+            // Attach trackAction method to bot for HTN tasks
+            this.bot.trackAction = this.trackAction.bind(this);
 
             // Start HTN logic
             console.log(`[${this.name}] Starting HTN execution...`);
@@ -85,7 +123,7 @@ export class HTNAgent extends BaseAgent {
             // startHTN is an async function that manages task execution
             const result = await startHTN(this.bot, inventoryPort);
             
-            this.metrics.success = result?.success || true;
+            this.metrics.success = result?.success || false;
             this.metrics.end_time = new Date().toISOString();
             this.metrics.time_elapsed_s = 
                 (new Date(this.metrics.end_time) - new Date(this.metrics.start_time)) / 1000;
@@ -120,10 +158,21 @@ export class HTNAgent extends BaseAgent {
             const dir = path.dirname(this.metricsExportPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
+                console.log(`[${this.name}] Created metrics directory: ${dir}`);
             }
 
             // Add current bot state to metrics
             if (this.bot) {
+                this.metrics.version = this.bot.version;
+                try {
+                    // Ir al contenido de la referencia (hash del ultimo commit)
+                    const refPath = '.git/' + fs.readFileSync('.git/HEAD', 'utf-8').trim().split(' ')[1];
+                    const refContent = fs.readFileSync(refPath, 'utf-8');
+                    this.metrics.version = refContent.toString().trim();
+                } catch (e) {
+                    console.warn(`[${this.name}] No se pudo obtener la versión de Git: ${e.message}`);
+                    this.metrics.version = 'unknown';
+                }
                 this.metrics.final_position = this.bot.entity.position;
                 this.metrics.final_inventory = this.bot.inventory.items().map(item => ({
                     name: item.name,
@@ -145,9 +194,17 @@ export class HTNAgent extends BaseAgent {
     /**
      * Track action (called by HTN primitives)
      */
-    trackAction(actionName) {
+    async trackAction(actionName) {
         this.metrics.steps_taken++;
-        this.metrics.actions[actionName] = (this.metrics.actions[actionName] || 0) + 1;
+        
+        // Record sequence of actions
+        this.metrics.actions.push({
+            name: actionName,
+            timestamp: new Date().toISOString()
+        });
+
+        // Count occurrences
+        this.metrics.action_counts[actionName] = (this.metrics.action_counts[actionName] || 0) + 1;
     }
 
     /**
