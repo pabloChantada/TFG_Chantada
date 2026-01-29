@@ -14,6 +14,8 @@
 ## APIs & Tecnologías
 - **Mineflayer**: Considerar modelos más recientes (Claude 4 vs 3.5, GPT-4o)
 - **Mindcraft**: Fork actualizado con agentes personalizados
+- **Mineways**: Exportación de mundos para análisis visual
+- **Kaggle**: Dataset de texturas de bloques para visión por computadora
 
 ## Algoritmos
 - [ ] RL
