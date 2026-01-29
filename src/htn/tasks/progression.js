@@ -36,6 +36,7 @@ async function runTask(bot, name, checkFn, actionFn, retries = 1, replanFn = nul
     }
 
     bot.chat(`[START] ${name}`)
+    await bot.trackAction(name)
 
     for (let i = 0; i <= retries; i++) {
         try {
