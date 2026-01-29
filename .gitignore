@@ -22,10 +22,16 @@ dist/
 build/
 
 # Evaluation & Metrics
-metrics/
 agents.json
 agents_*.json
+
+# Ignorar todo en memories y metrics excepto archivos de ejemplo
 src/agents/memories/*
+!src/agents/memories/*example*
+
+src/agents/metrics/*
+!src/agents/metrics/*example*
+
 ################################
 ###### Proyecto LLM Agent ######
 ################################
