@@ -35,7 +35,7 @@ export async function startHTN(bot, inventoryPort = 3001) {
         // if (message === 'craft') await startFullProgression(bot)
         if (message === 'clear') await clearInventory(bot)
     })
-    await startFullProgression(bot)
+    return await startFullProgression(bot)
 }
 
 // =========================================================
@@ -46,8 +46,12 @@ async function startFullProgression(bot) {
     try {
         await runFullProgression(bot, mcData)
         await bot.quit()
+        // Para indicar éxito en la ejecución del HTN
+        return { success: true };
     } catch (err) {
         bot.chat(`Proceso detenido: ${err.message}`)
         console.error(err)
+        await bot.quit()
+        return { success: false };
     }
 }
