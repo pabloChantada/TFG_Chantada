@@ -25,6 +25,7 @@ export class HTNAgent extends BaseAgent {
             time_elapsed_s: 0,
             steps_taken: 0,
             exploration_distance: 0,
+            movement_path: [], // Array of {x,y,z,timestamp} for 3D path export
             actions: [], // Changed to array to store sequence of actions
             action_counts: {}, // New object for counting occurrences
             // Podemos hacer que esto sea de los fallos que ocurren durante la ejecución. i.e: se le rompe el pico
@@ -85,6 +86,12 @@ export class HTNAgent extends BaseAgent {
                         // Only add significant movement to avoid jitter
                         if (dist > 0.05) { 
                             this.metrics.exploration_distance += dist;
+                            this.metrics.movement_path.push({
+                                x: currentPos.x,
+                                y: currentPos.y,
+                                z: currentPos.z,
+                                timestamp: new Date().toISOString()
+                            });
                             this.lastPosition = currentPos.clone();
                         }
                     }
@@ -184,8 +191,17 @@ export class HTNAgent extends BaseAgent {
                 this.metricsExportPath,
                 JSON.stringify(this.metrics, null, 2)
             );
+
+            // Export CSV path for Blender (x,y,z,timestamp)
+            const csvPath = this.metricsExportPath.replace(/\.json$/, '') + '_path.csv';
+            const csvHeader = 'x,y,z,timestamp\n';
+            const csvBody = this.metrics.movement_path
+                .map(p => `${p.x},${p.y},${p.z},${p.timestamp}`)
+                .join('\n');
+            fs.writeFileSync(csvPath, csvHeader + csvBody + (csvBody ? '\n' : ''));
             
             console.log(`[${this.name}] Metrics exported to ${this.metricsExportPath}`);
+            console.log(`[${this.name}] Path CSV exported to ${csvPath}`);
         } catch (error) {
             console.error(`[${this.name}] Failed to export metrics:`, error.message);
         }
