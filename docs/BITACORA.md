@@ -63,9 +63,30 @@ const result = await this.agent.prompter.promptVision(messages, imageBuffer);
 
 ## Pendiente
 - [x] Exploración de madera con `getBiomeName()`
-- [ ] Rotura accidental de mesa al explorar → mejorar placement logic
+- [x] Rotura accidental de mesa al explorar → mejorar placement logic
 - [ ] Manejo de agua en movimiento
-- [ ] Acceso concurrente a memoria → revisar sistema
+- [x] Acceso concurrente a memoria → revisar sistema
+
+---
+
+- getBiomeName() puede ayudar en búsqueda de madera según bioma
+- En la obtención de materias primas aún se “raya” (loops). Prioridad: mejor exploración y condiciones de salida claras.
+
+```javascript
+export function getBiomeName(bot) {
+    /**
+     * Get the name of the biome the bot is in.
+     * @param {Bot} bot - The bot to get the biome for.
+     * @returns {string} - The name of the biome.
+     * @example
+     * let biome = world.getBiomeName(bot);
+     **/
+    const biomeId = bot.world.getBiome(bot.entity.position);
+    return mc.getAllBiomes()[biomeId].name;
+}
+```
+
+Esta funcion puede ayudar al conseguir madera
 
 ---
 # DUDAS 

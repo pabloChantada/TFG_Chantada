@@ -5,12 +5,13 @@ import Vec3 from 'vec3'
 import {
     collectResource,
     smartCraft,
+    ensureCraftingTable,
     placeBlock,
     smeltItem,
     getItemNameFromBlock,
     exploreRandom
 } from '../primitive_task.js'
-import { chopTree, ensureCraftingTable } from './wood.js'
+import { chopTree, obtainWoodType, obtainPlankType } from './wood.js'
 import { getCoal, getIron } from './mining.js'
 
 // =========================================================
@@ -105,16 +106,20 @@ async function woodPhase(bot, mcData, has, guards) {
     if (guards.atStone()) return
 
     // Madera: tarea crítica, más reintentos
+    const woodType = await obtainWoodType(bot, mcData)
+    const plankType = obtainPlankType(woodType)
+    
     await runTask(
         bot,
         'Madera',
-        () => has('oak_log', 4),
+        () => has(woodType, 4),
         async () => chopTree(bot, mcData, 4),
         5,
         replan(bot, 3)
     )
     
-    await runTask(bot, 'Tablones', () => has('oak_planks', 12), async () => smartCraft(bot, mcData, 'oak_planks', 4))
+    bot.chat(`Craftear ${plankType} desde ${woodType}`)
+    await runTask(bot, 'Tablones', () => has(plankType, 12), async () => smartCraft(bot, mcData, plankType, 4))
     await runTask(bot, 'Palos', () => has('stick', 4), async () => smartCraft(bot, mcData, 'stick', 2))
 
     await runTask(bot, 'Asegurar Mesa', guards.isTablePlaced, async () => ensureCraftingTable(bot, mcData, 32), 3, replan(bot, 2))
