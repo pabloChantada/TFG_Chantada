@@ -67,6 +67,11 @@ const args = yargs(hideBin(process.argv))
         description: 'Minecraft version (or "auto")',
         default: 'auto'
     })
+    .option('clean-metrics', {
+        type: 'boolean',
+        description: 'Clean metrics directory (excluding example_*.json/csv files)',
+        default: false
+    })
     .option('config', {
         alias: 'c',
         type: 'string',
@@ -107,6 +112,40 @@ try {
     console.error('[ERROR] Failed to clean memory directory:', error.message);
 }
 
+// Clean metrics directory if requested
+if (args.cleanMetrics) {
+    const metricsPath = "src/agents/metrics/";
+    try {
+        const fs = await import('fs');
+        if (fs.existsSync(metricsPath)) {
+            const files = fs.readdirSync(metricsPath);
+            let deletedCount = 0;
+            
+            for (const file of files) {
+                // Skip example files
+                if (file.startsWith('example_')) {
+                    continue;
+                }
+                
+                const filePath = `${metricsPath}/${file}`;
+                if (fs.statSync(filePath).isFile()) {
+                    fs.unlinkSync(filePath);
+                    deletedCount++;
+                }
+            }
+            
+            if (deletedCount > 0) {
+                console.log(`[INFO] Removed ${deletedCount} file(s) from metrics directory`);
+            }
+        } else {
+            // Create directory if it doesn't exist
+            fs.mkdirSync(metricsPath, { recursive: true });
+            console.log(`[INFO] Created metrics directory: ${metricsPath}`);
+        }
+    } catch (error) {
+        console.error('[ERROR] Failed to clean metrics directory:', error.message);
+    }
+}
 
 await EvalServer.init(args.hostPublic, args.port, !args.noUi);
 
