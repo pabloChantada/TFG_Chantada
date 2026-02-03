@@ -91,7 +91,8 @@ Esta funcion puede ayudar al conseguir madera
 ---
 
 ## 2 feb
-Adicion de iconos de minecraft a matplotlib
+- Adicion de iconos de minecraft a matplotlib
+- Usar JSON para manejar el inventario ? o el progreso de las tareas en vez de un js ?
 
 ---
 
