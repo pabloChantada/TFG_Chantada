@@ -9,29 +9,29 @@
 - [x] Mejora de sistema de memorias
 - [x] Mejorar madera
 - [x] Cambiar iconos matplotlib
+- [x] Automatizar obtención de objetos (incluye exploración)
 
 ## En Progreso
 - [ ] Llegar hasta hierro end-to-end estable
   - [x] Reordenar progreso: minar carbón/hierro → colocar horno → fundir
   - [x] Descartar straight mining, usar búsqueda omnisciente con findBlock
-  - [ ] Estabilizar recolección madera/piedra (exploración consistente)
-  - [ ] Robustecer crafteo con mesa (evitar windowOpen timeout)
+  - [ ] Robustecer crafteo con mesa (evitar windowO fpen timeout)
   - [x] Ajustar criterios "has()" para items vs bloques
   - [x] Añadir telemetría mínima para diagnosticar fallos
+  - [ ] Implementar replanificacino completa
  
 ## Por Hacer
 - [ ] Comunicación multiagente para replanificación
 - [ ] Recipes no hardcoded (planificador recursivo/crafting graph)
-- [ ] Automatizar obtención de objetos (incluye exploración)
 - [ ] Estabilizar exploración (evitar loops infinitos)
 - [ ] Manejo robusto de agua
 - [ ] Automatizar creacion de mundos
+- [ ] Juntar: accion (andar, picar, supersimple) + imagen + reward + completado o no
+- [ ] World Models -> Investigar
+  - [ ] Crear red de refuerzo para: predecir acciones | generar imagenes
+  - [ ] Las imagenes seran como maxisimo 256x256
+- [ ] Probar autoencoder sin decoder VS solo autoencoder
 
-## Investigación
-- [ ] Algoritmo RL
-- [ ] Algoritmo LLM
-- [ ] Algoritmo Genético
-- [ ] Algoritmo Simbólico (HTN)
 
 ## Notas Técnicas
 - Prioridad: mejor exploración y condiciones de salida claras en recolección de materias primas
