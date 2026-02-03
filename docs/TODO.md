@@ -8,6 +8,7 @@
 - [x] Coger viewer de visión multiagente de LLM's
 - [x] Mejora de sistema de memorias
 - [x] Mejorar madera
+- [x] Cambiar iconos matplotlib
 
 ## En Progreso
 - [ ] Llegar hasta hierro end-to-end estable
