@@ -16,7 +16,7 @@
 - **Mindcraft**: Fork actualizado con agentes personalizados
 - **Mineways**: Exportación de mundos para análisis visual
 - **Kaggle**: Dataset de texturas de bloques para visión por computadora
-
+- **McIcons**: imagenes de minecraft (https://mcicons.ccleaf.com/)
 ## Algoritmos
 - [ ] RL
 - [ ] LLM
@@ -89,6 +89,12 @@ export function getBiomeName(bot) {
 Esta funcion puede ayudar al conseguir madera
 
 ---
+
+## 2 feb
+Adicion de iconos de minecraft a matplotlib
+
+---
+
 # DUDAS 
 
 # DUDAS RESUELTAS
