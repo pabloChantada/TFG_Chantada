@@ -24,7 +24,10 @@
 - [ ] Simbólico (HTN)
 
 ## Decisiones de Diseño
+### Datasets
+https://github.com/cosmoharrigan/minecraft-dataset-generation
 
+este se podria usar, pero es mas rentable usar el custom
 ### Estrategia de Minería
 Dado el coste computacional de LLM's locales, se usa búsqueda omnisciente (`findBlock`) en lugar de exploración pixel-a-pixel.
 - Filtro de ores vs bloques visibles (`blockName.includes('ore')`)
