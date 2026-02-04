@@ -102,7 +102,7 @@ function createPhaseGuards(bot, mcData, has) {
     }
 }
 
-async function woodPhase(bot, mcData, has, guards) {
+async function woodPhase(bot, mcData, has, guards, metricsCollector = null) {
     if (guards.atStone()) return
 
     // Madera: tarea crítica, más reintentos
@@ -113,7 +113,7 @@ async function woodPhase(bot, mcData, has, guards) {
         bot,
         'Madera',
         () => has(woodType, 4),
-        async () => chopTree(bot, mcData, 4),
+        async () => chopTree(bot, mcData, 4, metricsCollector),
         5,
         replan(bot, 3)
     )
@@ -133,7 +133,7 @@ async function woodPhase(bot, mcData, has, guards) {
         bot,
         'Piedra Total',
         () => has('stone', 11) || guards.atFurnace(),
-        async () => collectResource(bot, mcData, 'stone', 11),
+        async () => collectResource(bot, mcData, 'stone', 11, metricsCollector),
         5,
         replan(bot, 3)
     )
@@ -143,7 +143,7 @@ async function woodPhase(bot, mcData, has, guards) {
     if (stonePick) await bot.equip(stonePick, 'hand')
 }
 
-async function furnacePhase(bot, mcData, has, guards) {
+async function furnacePhase(bot, mcData, has, guards, metricsCollector = null) {
     // Solo se llama cuando ya tenemos materiales para fundir
     if (guards.isFurnacePlaced()) return
 
@@ -184,7 +184,7 @@ async function ensureNearbyFurnace(bot, mcData, has, guards) {
     }
 }
 
-async function ironPhase(bot, mcData, has, guards) {
+async function ironPhase(bot, mcData, has, guards, metricsCollector = null) {
     if (guards.atIron()) return
 
     // 1. Primero minamos carbón y hierro
@@ -213,13 +213,13 @@ async function ironPhase(bot, mcData, has, guards) {
 // --- ORQUESTADOR DE PROGRESIÓN ---
 // =========================================================
 
-async function runFullProgression(bot, mcData) {
+async function runFullProgression(bot, mcData, metricsCollector = null) {
     const has = createHas(bot, mcData)
     const guards = createPhaseGuards(bot, mcData, has)
 
-    await woodPhase(bot, mcData, has, guards)
+    await woodPhase(bot, mcData, has, guards, metricsCollector)
     // furnacePhase se llama desde ironPhase cuando ya tenemos materiales
-    await ironPhase(bot, mcData, has, guards)
+    await ironPhase(bot, mcData, has, guards, metricsCollector)
 
     bot.chat('¡Misión Completa: Tengo el Pico de Hierro!')
 }

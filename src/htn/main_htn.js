@@ -17,7 +17,7 @@ let mcData
 // --- LÓGICA DEL BOT ---
 // =========================================================
 
-export async function startHTN(bot, inventoryPort = 3001) {
+export async function startHTN(bot, inventoryPort = 3001, metricsCollector = null) {
     mcData = minecraftData(bot.version)
     
     inventoryViewer(bot, { port: inventoryPort }) // Optional: might conflict with existing viewer
@@ -32,19 +32,19 @@ export async function startHTN(bot, inventoryPort = 3001) {
 
     bot.on('chat', async (username, message) => {
         if (username === bot.username) return
-        // if (message === 'craft') await startFullProgression(bot)
+        // if (message === 'craft') await startFullProgression(bot, metricsCollector)
         if (message === 'clear') await clearInventory(bot)
     })
-    return await startFullProgression(bot)
+    return await startFullProgression(bot, mcData, metricsCollector)
 }
 
 // =========================================================
 // --- TAREA PRINCIPAL: PROGRESIÓN COMPLETA HASTA HIERRO ---
 // =========================================================
 
-async function startFullProgression(bot) {
+async function startFullProgression(bot, mcData, metricsCollector = null) {
     try {
-        await runFullProgression(bot, mcData)
+        await runFullProgression(bot, mcData, metricsCollector)
         await bot.quit()
         // Para indicar éxito en la ejecución del HTN
         return { success: true };

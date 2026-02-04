@@ -49,7 +49,7 @@ export class HTNAgent extends BaseAgent {
             
             if (this.bot) {
                 // Start movement tracking
-                this.metricsCollector.startMovementTracking(this.bot);
+                this.metricsCollector.startWorldTracking(this.bot);
             }
 
             // Setup viewer
@@ -111,7 +111,7 @@ export class HTNAgent extends BaseAgent {
     async runLogic(inventoryPort = 3001) {
         try {
             // startHTN is an async function that manages task execution
-            const result = await startHTN(this.bot, inventoryPort);
+            const result = await startHTN(this.bot, inventoryPort, this.metricsCollector);
             
             this.metricsCollector.completeTask(result?.success || false);
             
