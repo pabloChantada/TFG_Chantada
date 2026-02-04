@@ -32,9 +32,11 @@ export class HTNAgent extends BaseAgent {
             this.memoryPath = `src/agents/memories/${this.name}_memory.json`;
             
             // Initialize metrics collection
-            this.metricsCollector.initialize(
+            await this.metricsCollector.initialize(
                 settings.metrics_export_path,
-                settings.task?.goal || 'Default HTN progression'
+                settings.task?.goal || 'Default HTN progression',
+                true,
+                viewerPort
             );
 
             // Clear/load memory
