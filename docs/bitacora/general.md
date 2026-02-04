@@ -4,7 +4,7 @@
 - **Mineways**: Exportación de mundos para análisis visual
 - **Kaggle**: Dataset de texturas de bloques para visión por computadora
 - **McIcons**: imagenes de minecraft (https://mcicons.ccleaf.com/)
-
+- **Puppeteer**: Puppeteer captura esa página como imagen PNG de forma automatizada.
 ## Decisiones de Diseño
 ### Datasets
 https://github.com/cosmoharrigan/minecraft-dataset-generation

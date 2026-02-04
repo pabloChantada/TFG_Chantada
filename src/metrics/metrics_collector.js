@@ -27,8 +27,7 @@ export class MetricsCollector {
             //   x, y, z: floats, 
             //   timestamp: date,
             //   action: str,
-            //   success: bool,
-            //   observation: png
+            //   success: bool
             // }
             world_model: [], 
             actions: [], // Name of the action and timestamp
@@ -66,39 +65,38 @@ export class MetricsCollector {
 
     /**
      * End action tracking with success/failure status
-     * Records actions to world_model with detailed state information
+     * Records actions
      * @param {boolean} success - Whether the action succeeded
      * @param {Object} bot - Mineflayer bot instance
      */
-    trackActionEnd(success, bot) {
+    async trackActionEnd(success, bot) {
         if (!this.currentAction) return;
         
-        const endInventory = this.captureInventoryState(bot);
+        // Capture current action immediately to avoid race conditions
+        const currentActionData = this.currentAction;
+        this.currentAction = null;
+        
         const completedAction = {
-            name: this.currentAction.name,
+            name: currentActionData.name,
             success,
-            startTime: this.currentAction.startTime,
+            startTime: currentActionData.startTime,
             endTime: new Date().toISOString(),
-            duration: (new Date() - new Date(this.currentAction.startTime)) / 1000
+            duration: (new Date() - new Date(currentActionData.startTime)) / 1000
         };
 
         this.metrics.actions.push(completedAction);
         
-        // Record action completion to world_model as a snapshot entry with all completed actions so far
+        // Record action completion to world_model
         this.metrics.world_model.push({
-            name: this.currentAction.name,
             x: bot.entity.position.x,
             y: bot.entity.position.y,
             z: bot.entity.position.z,
-            success: success,
-            img: null, // placeholder for image data
-            timestamp: new Date().toISOString()
+            action: completedAction,
+            timestamp: completedAction.endTime
         });
         
-        this.metrics.action_counts[this.currentAction.name] = 
-            (this.metrics.action_counts[this.currentAction.name] || 0) + 1;
-        
-        this.currentAction = null;
+        this.metrics.action_counts[currentActionData.name] = 
+            (this.metrics.action_counts[currentActionData.name] || 0) + 1;
     }
 
     /**
@@ -140,7 +138,7 @@ export class MetricsCollector {
      * @param {string} exportPath - Path to export metrics (file or directory)
      * @param {string} task - Task description
      */
-    initialize(exportPath, task) {
+    async initialize(exportPath, task) {
         // Set metrics export path - if it's a directory, add filename; if null or empty, set default
         if (exportPath) {
             // If path ends with / or has no extension, treat as directory and add filename
@@ -165,7 +163,7 @@ export class MetricsCollector {
      * Start tracking bot observations and movements
      * Distinguishes between 'idle' (not moving) and actual actions being performed
      * @param {Object} bot - Mineflayer bot instance
-     * @param {number} samplingRate - Samples per second (default: 10)
+     * @param {number} samplingRate - Samples per second (default: 1)
      */
     startWorldTracking(bot, samplingRate = 1) {
         if (!bot) return;
@@ -177,39 +175,51 @@ export class MetricsCollector {
         const movementThreshold = 0.05; // Minimum distance to consider as "moving"
 
         // Sample bot state at fixed intervals
-        this.trackingInterval = setInterval(() => {
+        this.trackingInterval = setInterval(async () => {
             const currentPos = bot.entity.position;
             const dist = this.lastPosition.distanceTo(currentPos);
 
             // Update exploration distance if moved
-            this.metrics.exploration_distance += dist; // If we don't move, the sum stays the same
+            this.metrics.exploration_distance += dist;
 
             // Determine current action state
             let actionState = 'idle';
-
-            // If there's a current action being tracked, use that
             if (this.currentAction) {
                 actionState = this.currentAction.name;
-            } else {
-                // Check if bot is actually moving (not idle)
-                if (dist > movementThreshold) {
-                    actionState = 'moving';
-                } else {
-                    actionState = 'idle';
-                }
+            } else if (dist > movementThreshold) {
+                actionState = 'moving';
             }
 
             // Update last position after computing movement
             this.lastPosition = currentPos.clone();
             this.metrics.action_counts[actionState] = (this.metrics.action_counts[actionState] || 0) + 1;
-            // Capture complete bot state with all completed actions
+            
+            // Create action object
+            let actionObj = null;
+            if (this.currentAction) {
+                actionObj = {
+                    name: this.currentAction.name,
+                    success: null,
+                    startTime: this.currentAction.startTime,
+                    endTime: null,
+                    duration: null
+                };
+            } else if (actionState === 'moving' || actionState === 'idle') {
+                actionObj = {
+                    name: actionState,
+                    success: undefined,
+                    startTime: null,
+                    endTime: null,
+                    duration: null
+                };
+            }
+            
+            // Capture bot state
             this.metrics.world_model.push({
-                name: actionState,
                 x: currentPos.x,
                 y: currentPos.y,
                 z: currentPos.z,
-                success: this.currentAction ? null : undefined, // null if action in progress, undefined if idle
-                img: null, // placeholder for image data
+                action: actionObj,
                 timestamp: new Date().toISOString()
             });
         }, intervalMs);
@@ -217,14 +227,10 @@ export class MetricsCollector {
         console.log(`[${this.agentName}] World tracking started at ${samplingRate} samples/second`);
     }
 
-
-
-
-
     /**
      * Stop world tracking and clear interval
      */
-    stopWorldTracking() {
+    async stopWorldTracking() {
         if (this.trackingInterval) {
             clearInterval(this.trackingInterval);
             this.trackingInterval = null;
@@ -311,8 +317,7 @@ export class MetricsCollector {
     }
 
     /**
-     * 
-     * @param {*} bot 
+     * * @param {*} bot 
      */
     async getVersion(bot) {
         // Get git version
