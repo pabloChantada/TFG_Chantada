@@ -17,7 +17,8 @@ export async function init(host_public=false, port=8080, auto_open_ui=true) {
     mindserver = createMindServer(host_public, port);
     mindserver_port = port;
     connected = true;
-    if (auto_open_ui) {
+    const disableAutoOpen = process.env.MINDCRAFT_NO_UI === '1' || process.env.NO_UI === '1';
+    if (auto_open_ui && !disableAutoOpen) {
         setTimeout(() => {
             // check if browser listener is already open
             if (numStateListeners() === 0) {
