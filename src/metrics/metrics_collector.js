@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import puppeteer from 'puppeteer';
 
 export class MetricsCollector {
     constructor(agentName, agentType) {
@@ -9,6 +10,15 @@ export class MetricsCollector {
         this.lastPosition = null;
         this.trackingInterval = null; // How many intervals to track in a second
         this.currentAction = null; // Track ongoing action
+        this.captureScreenshots = false;
+        this.viewerPort = null;
+        this.screenshotsDir = null;
+        this.screenshotFormat = 'png';
+        this.screenshotWidth = 1024;
+        this.screenshotHeight = 768;
+        this.browser = null;
+        this.page = null;
+        this.screenshotQueue = Promise.resolve(null);
         
         this.metrics = {
             version: null,
@@ -86,13 +96,16 @@ export class MetricsCollector {
 
         this.metrics.actions.push(completedAction);
         
+        const screenshotPath = await this._queueScreenshotCapture();
+
         // Record action completion to world_model
         this.metrics.world_model.push({
             x: bot.entity.position.x,
             y: bot.entity.position.y,
             z: bot.entity.position.z,
             action: completedAction,
-            timestamp: completedAction.endTime
+            timestamp: completedAction.endTime,
+            screenshot: screenshotPath
         });
         
         this.metrics.action_counts[currentActionData.name] = 
@@ -137,8 +150,10 @@ export class MetricsCollector {
      * Initialize metrics collection
      * @param {string} exportPath - Path to export metrics (file or directory)
      * @param {string} task - Task description
+     * @param {boolean} captureScreenshots - Enable viewer screenshots for world_model entries
+     * @param {number} viewerPort - Port for prismarine viewer
      */
-    async initialize(exportPath, task) {
+    async initialize(exportPath, task, captureScreenshots = false, viewerPort = null) {
         // Set metrics export path - if it's a directory, add filename; if null or empty, set default
         if (exportPath) {
             // If path ends with / or has no extension, treat as directory and add filename
@@ -155,8 +170,59 @@ export class MetricsCollector {
 
         this.metrics.task = task || 'Default task';
         this.metrics.start_time = new Date().toISOString();
+
+        this.captureScreenshots = Boolean(captureScreenshots);
+        this.viewerPort = viewerPort;
+        if (this.captureScreenshots) {
+            this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}/screenshots`;
+        }
         
         console.log(`[${this.agentName}] Metrics initialized - Export path: ${this.exportPath}`);
+    }
+
+    async _ensureScreenshotDir() {
+        if (!this.screenshotsDir) return;
+        if (!fs.existsSync(this.screenshotsDir)) {
+            fs.mkdirSync(this.screenshotsDir, { recursive: true });
+        }
+    }
+
+    async _ensureBrowser() {
+        if (!this.captureScreenshots || !this.viewerPort) return;
+        if (this.browser && this.page) return;
+
+        this.browser = await puppeteer.launch({ headless: 'new' });
+        this.page = await this.browser.newPage();
+        await this.page.setViewport({ width: this.screenshotWidth, height: this.screenshotHeight });
+        await this.page.goto(`http://localhost:${this.viewerPort}`, { waitUntil: 'networkidle0' });
+        await this.page.waitForSelector('canvas');
+    }
+
+    async _captureViewerScreenshot() {
+        if (!this.captureScreenshots || !this.viewerPort) return null;
+        try {
+            await this._ensureScreenshotDir();
+            await this._ensureBrowser();
+
+            const canvas = await this.page.$('canvas');
+            if (!canvas) return null;
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `worldmodel_${timestamp}.${this.screenshotFormat}`;
+            const filePath = path.join(this.screenshotsDir, filename);
+
+            await canvas.screenshot({ path: filePath, type: this.screenshotFormat });
+            return filePath;
+        } catch (error) {
+            console.warn(`[${this.agentName}] Screenshot capture failed: ${error.message}`);
+            return null;
+        }
+    }
+
+    async _queueScreenshotCapture() {
+        if (!this.captureScreenshots) return null;
+        this.screenshotQueue = this.screenshotQueue.then(() => this._captureViewerScreenshot());
+        return this.screenshotQueue;
     }
 
     /**
@@ -214,13 +280,16 @@ export class MetricsCollector {
                 };
             }
             
+            const screenshotPath = await this._queueScreenshotCapture();
+
             // Capture bot state
             this.metrics.world_model.push({
                 x: currentPos.x,
                 y: currentPos.y,
                 z: currentPos.z,
                 action: actionObj,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                screenshot: screenshotPath
             });
         }, intervalMs);
 
@@ -235,6 +304,12 @@ export class MetricsCollector {
             clearInterval(this.trackingInterval);
             this.trackingInterval = null;
             console.log(`[${this.agentName}] World tracking stopped`);
+        }
+
+        if (this.browser) {
+            await this.browser.close();
+            this.browser = null;
+            this.page = null;
         }
     }
 
