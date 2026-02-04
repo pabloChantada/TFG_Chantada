@@ -74,6 +74,7 @@ const args = yargs(hideBin(process.argv))
         default: 'auto'
     })
     .option('clean-metrics', {
+        alias: 'cm',
         type: 'boolean',
         description: 'Clean metrics directory (excluding example_*.json/csv files)',
         default: false

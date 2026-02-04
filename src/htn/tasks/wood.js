@@ -28,10 +28,10 @@ const biomeToWoodType = {
 // Lista de sufijos de bloques de madera válidos
 const WOOD_SUFFIXES = ['_log', '_stem', '_hyphae', '_wood'];
 
-async function chopTree(bot, mcData, logs = 4) {
+async function chopTree(bot, mcData, logs = 4, metricsCollector = null) {
     const woodType = await obtainWoodType(bot, mcData);
     console.log(`[Wood.js] Bioma detectado. Buscando: ${woodType}`);
-    await collectResource(bot, mcData, woodType, logs);
+    await collectResource(bot, mcData, woodType, logs, metricsCollector);
 }
 
 function getBiomeName(bot, mcData) {
