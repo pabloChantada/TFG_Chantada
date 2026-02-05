@@ -59,8 +59,8 @@ export async function createAgent(settings) {
             console.warn(`Attempting to connect anyway...`);
         }
 
-        // Determine agent script - use generic launcher for all agents
-        const script = settings.profile?.custom_script || settings.custom_script || 'src/agents/start_agent.js';
+        // Determine agent script - use universal agent launcher
+        const script = settings.profile?.custom_script || settings.custom_script || 'src/agents/add_agent.js';
         
         console.log(`Starting ${settings.agent_type || 'custom'} agent with script: ${script}`);
         const agentProcess = new AgentProcess(agent_name, mindserver_port, script);
