@@ -10,9 +10,9 @@
  */
 
 import * as EvalServer from './mindcraft.js';
-import { buildAgentSettings, parseAgentsConfig } from '../agents/create_agent.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { buildAgentSettings } from '../agents/create_agent.js';
 
 const args = yargs(hideBin(process.argv))
     .option('port', {
@@ -214,37 +214,5 @@ async function createAgentFromCLI(agentType, agentName, cliArgs) {
         console.log(`[INFO] Agent ${agentName} created successfully`);
     } else {
         console.error(`[ERROR] Failed to create agent ${agentName}: ${result.error}`);
-    }
-}
-
-/**
- * Create multiple agents from a JSON config file
- */
-async function createAgentsFromConfig(configPath, cliArgs) {
-    try {
-        const defaultOptions = {
-            minecraftHost: cliArgs.minecraftHost,
-            minecraftPort: cliArgs.minecraftPort,
-            minecraftVersion: cliArgs.minecraftVersion,
-            noViewer: cliArgs.noViewer
-        };
-        
-        const agentSettingsList = await parseAgentsConfig(configPath, defaultOptions);
-        
-        for (const settings of agentSettingsList) {
-            console.log(`[INFO] Creating ${settings.agent_type} agent: ${settings.profile.name}`);
-            const result = await EvalServer.createAgent(settings);
-            
-            if (result.success) {
-                console.log(`[INFO] Agent ${settings.profile.name} created successfully`);
-            } else {
-                console.error(`[ERROR] Failed to create agent ${settings.profile.name}: ${result.error}`);
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    } catch (error) {
-        console.error('[ERROR] Error loading config file:', error.message);
-        process.exit(1);
     }
 }

@@ -34,6 +34,7 @@ src/metrics/agent_metrics/*
 # Ignorar modelos
 vae_minecraft.pth
 vae_training_log.txt
+.github
 
 ################################
 ###### Proyecto LLM Agent ######
