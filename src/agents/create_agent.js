@@ -24,7 +24,7 @@ export function buildAgentSettings(agentName, agentType, options = {}) {
         auth: options.auth || 'offline',
         load_memory: options.loadMemory || options.load_memory || false,
         init_message: options.initMessage || options.init_message || null,
-        render_bot_view: options.renderBotView !== false && options.render_bot_view !== false,
+        render_bot_view: options.noViewer ? false : (options.renderBotView !== false && options.render_bot_view !== false),
         chat_ingame: options.chatIngame !== false && options.chat_ingame !== false,
         narrate_behavior: options.narrateBehavior !== false && options.narrate_behavior !== false,
         spawn_timeout: options.spawnTimeout || options.spawn_timeout || 30,

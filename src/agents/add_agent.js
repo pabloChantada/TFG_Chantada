@@ -48,7 +48,7 @@ const args = yargs(hideBin(process.argv))
     .option('metrics-path', {
         type: 'string',
         description: 'Path to export metrics JSON',
-        default: 'src/agents/metrics/'
+        default: 'src/metrics/agent_metrics'
     })
     .help()
     .example('node src/agents/add_agent.js --name HTNTest --type htn', 'Add HTN agent to running server')
