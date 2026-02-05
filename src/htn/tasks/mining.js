@@ -1,15 +1,9 @@
-import pkg from 'mineflayer-pathfinder'
-const { goals } = pkg
-
 import {
     findNearestBlock,
     mineBlock,
-    moveToBlock,
-    nudgeForward,
     hasItem,
     getItemNameFromBlock,
     exploreRandom,
-    collectResource
 } from '../primitive_task.js'
 
 // import { ensureCraftingTable } from './wood.js'

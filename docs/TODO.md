@@ -29,12 +29,13 @@
   - [x] Ajustar criterios "has()" para items vs bloques
   - [x] Añadir telemetría mínima para diagnosticar fallos
   - [ ] Implementar replanificacino completa
+
  - [ ] Limpiar y refactorizar
-  - [ ] Agents
+  - [x] Agents
   - [ ] Evaluations
   - [ ] HTN
   - [ ] LLM ?
-  - [ ] Metrics
+  - [x] Metrics
   - [ ] Server
 
 ## Por Hacer
