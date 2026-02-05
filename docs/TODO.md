@@ -10,6 +10,12 @@
 - [x] Mejorar madera
 - [x] Cambiar iconos matplotlib
 - [x] Automatizar obtención de objetos (incluye exploración)
+- [x] Juntar: accion (andar, picar, supersimple) + imagen + reward + completado o no
+- [x] Mesa de crafteo: guardar posición al colocar
+- [x] Viewer multiagente integrado
+- [x] Exploración de madera con `getBiomeName()`
+- [x] Rotura accidental de mesa al explorar → mejorar placement logic
+- [x] Acceso concurrente a memoria → revisar sistema
 
 ## En Progreso
 - [ ] Llegar hasta hierro end-to-end estable
@@ -26,7 +32,6 @@
 - [ ] Estabilizar exploración (evitar loops infinitos)
 - [ ] Manejo robusto de agua
 - [ ] Automatizar creacion de mundos
-- [ ] Juntar: accion (andar, picar, supersimple) + imagen + reward + completado o no
 - [ ] World Models -> Investigar
   - [ ] Crear red de refuerzo para: predecir acciones | generar imagenes
   - [ ] Las imagenes seran como maxisimo 256x256
@@ -36,4 +41,4 @@
 ## Notas Técnicas
 - Prioridad: mejor exploración y condiciones de salida claras en recolección de materias primas
 - Mundo de cuevas multiagente: maximizar minería de ores con exploración coordinada. Mundo de cuevas -> varios agentes -> maximizar la mineria de ores
-
+- Manejo de agua en movimiento

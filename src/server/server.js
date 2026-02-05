@@ -5,6 +5,7 @@
  * Usage:
  *   node src/server/server.js                                    # Launch server only
  *   node src/server/server.js --agent htn --name Agent1          # Launch server + HTN agent
+ *   node src/server/server.js --agent htn --name Agent1 --no-ui         # Launch server + HTN agent
  *   node src/server/server.js --agents htn,rl --names A1,A2      # Launch server + multiple agents
  */
 
@@ -28,6 +29,11 @@ const args = yargs(hideBin(process.argv))
     .option('no-ui', {
         type: 'boolean',
         description: 'Don\'t auto-open browser UI',
+        default: false
+    })
+    .option('no-viewer', {
+        type: 'boolean',
+        description: 'Don\'t open 3D bot viewer',
         default: false
     })
     .option('agent', {
@@ -68,6 +74,7 @@ const args = yargs(hideBin(process.argv))
         default: 'auto'
     })
     .option('clean-metrics', {
+        alias: 'cm',
         type: 'boolean',
         description: 'Clean metrics directory (excluding example_*.json/csv files)',
         default: false
@@ -84,6 +91,12 @@ const args = yargs(hideBin(process.argv))
     .example('node server.js --agents htn,rl --names Agent1,Agent2', 'Launch server + 2 agents')
     .example('node server.js --config agents.json', 'Launch server with agents from config file')
     .parse();
+
+const disableUi = args.noUi === true || args.ui === false;
+if (disableUi) {
+    process.env.MINDCRAFT_NO_UI = '1';
+    console.log('[INFO] UI auto-open disabled via --no-ui flag');
+}
 
 // Initialize server
 console.log('[INFO] Starting Evaluation Server...');
@@ -114,7 +127,7 @@ try {
 
 // Clean metrics directory if requested
 if (args.cleanMetrics) {
-    const metricsPath = "src/agents/metrics/";
+    const metricsPath = "src/metrics/agent_metrics/";
     try {
         const fs = await import('fs');
         if (fs.existsSync(metricsPath)) {
@@ -147,7 +160,7 @@ if (args.cleanMetrics) {
     }
 }
 
-await EvalServer.init(args.hostPublic, args.port, !args.noUi);
+await EvalServer.init(args.hostPublic, args.port, !disableUi);
 
 // Create agents from CLI arguments
 if (args.agent && args.name) {
@@ -191,7 +204,8 @@ async function createAgentFromCLI(agentType, agentName, cliArgs) {
     const settings = buildAgentSettings(agentName, agentType, {
         minecraftHost: cliArgs.minecraftHost,
         minecraftPort: cliArgs.minecraftPort,
-        minecraftVersion: cliArgs.minecraftVersion
+        minecraftVersion: cliArgs.minecraftVersion,
+        noViewer: cliArgs.noViewer
     });
 
     const result = await EvalServer.createAgent(settings);
@@ -211,7 +225,8 @@ async function createAgentsFromConfig(configPath, cliArgs) {
         const defaultOptions = {
             minecraftHost: cliArgs.minecraftHost,
             minecraftPort: cliArgs.minecraftPort,
-            minecraftVersion: cliArgs.minecraftVersion
+            minecraftVersion: cliArgs.minecraftVersion,
+            noViewer: cliArgs.noViewer
         };
         
         const agentSettingsList = await parseAgentsConfig(configPath, defaultOptions);
