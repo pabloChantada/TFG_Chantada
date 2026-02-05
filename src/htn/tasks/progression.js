@@ -5,12 +5,13 @@ import Vec3 from 'vec3'
 import {
     collectResource,
     smartCraft,
+    ensureCraftingTable,
     placeBlock,
     smeltItem,
     getItemNameFromBlock,
     exploreRandom
 } from '../primitive_task.js'
-import { chopTree, ensureCraftingTable } from './wood.js'
+import { chopTree, obtainWoodType, obtainPlankType } from './wood.js'
 import { getCoal, getIron } from './mining.js'
 
 // =========================================================
@@ -101,20 +102,24 @@ function createPhaseGuards(bot, mcData, has) {
     }
 }
 
-async function woodPhase(bot, mcData, has, guards) {
+async function woodPhase(bot, mcData, has, guards, metricsCollector = null) {
     if (guards.atStone()) return
 
     // Madera: tarea crítica, más reintentos
+    const woodType = await obtainWoodType(bot, mcData)
+    const plankType = obtainPlankType(woodType)
+    
     await runTask(
         bot,
         'Madera',
-        () => has('oak_log', 4),
-        async () => chopTree(bot, mcData, 4),
+        () => has(woodType, 4),
+        async () => chopTree(bot, mcData, 4, metricsCollector),
         5,
         replan(bot, 3)
     )
     
-    await runTask(bot, 'Tablones', () => has('oak_planks', 12), async () => smartCraft(bot, mcData, 'oak_planks', 4))
+    bot.chat(`Craftear ${plankType} desde ${woodType}`)
+    await runTask(bot, 'Tablones', () => has(plankType, 12), async () => smartCraft(bot, mcData, plankType, 4))
     await runTask(bot, 'Palos', () => has('stick', 4), async () => smartCraft(bot, mcData, 'stick', 2))
 
     await runTask(bot, 'Asegurar Mesa', guards.isTablePlaced, async () => ensureCraftingTable(bot, mcData, 32), 3, replan(bot, 2))
@@ -128,7 +133,7 @@ async function woodPhase(bot, mcData, has, guards) {
         bot,
         'Piedra Total',
         () => has('stone', 11) || guards.atFurnace(),
-        async () => collectResource(bot, mcData, 'stone', 11),
+        async () => collectResource(bot, mcData, 'stone', 11, metricsCollector),
         5,
         replan(bot, 3)
     )
@@ -138,7 +143,7 @@ async function woodPhase(bot, mcData, has, guards) {
     if (stonePick) await bot.equip(stonePick, 'hand')
 }
 
-async function furnacePhase(bot, mcData, has, guards) {
+async function furnacePhase(bot, mcData, has, guards, metricsCollector = null) {
     // Solo se llama cuando ya tenemos materiales para fundir
     if (guards.isFurnacePlaced()) return
 
@@ -179,7 +184,7 @@ async function ensureNearbyFurnace(bot, mcData, has, guards) {
     }
 }
 
-async function ironPhase(bot, mcData, has, guards) {
+async function ironPhase(bot, mcData, has, guards, metricsCollector = null) {
     if (guards.atIron()) return
 
     // 1. Primero minamos carbón y hierro
@@ -208,13 +213,13 @@ async function ironPhase(bot, mcData, has, guards) {
 // --- ORQUESTADOR DE PROGRESIÓN ---
 // =========================================================
 
-async function runFullProgression(bot, mcData) {
+async function runFullProgression(bot, mcData, metricsCollector = null) {
     const has = createHas(bot, mcData)
     const guards = createPhaseGuards(bot, mcData, has)
 
-    await woodPhase(bot, mcData, has, guards)
+    await woodPhase(bot, mcData, has, guards, metricsCollector)
     // furnacePhase se llama desde ironPhase cuando ya tenemos materiales
-    await ironPhase(bot, mcData, has, guards)
+    await ironPhase(bot, mcData, has, guards, metricsCollector)
 
     bot.chat('¡Misión Completa: Tengo el Pico de Hierro!')
 }

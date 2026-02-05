@@ -22,10 +22,19 @@ dist/
 build/
 
 # Evaluation & Metrics
-metrics/
 agents.json
 agents_*.json
+
+# Ignorar todo en memories y metrics excepto archivos de ejemplo
 src/agents/memories/*
+!src/agents/memories/*example*
+
+src/metrics/agent_metrics/*
+
+# Ignorar modelos
+vae_minecraft.pth
+vae_training_log.txt
+
 ################################
 ###### Proyecto LLM Agent ######
 ################################
