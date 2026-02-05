@@ -49,36 +49,61 @@ function findNearestBlock(bot, mcData, blockName, maxDistance = 32) {
     return bot.findBlock({ matching: blockId, maxDistance })
 }
 
-async function moveToBlock(bot, block, range = 3) {
+async function moveToBlock(bot, block, range = 3, metricsCollector = null) {
     if (!block) return
+    
+    metricsCollector?.trackActionStart('move', bot)
+    
     const dist = bot.entity.position.distanceTo(block.position)
     if (dist > range) {
         try {
             await bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, range))
+            metricsCollector?.trackActionEnd(true, bot)
         } catch (e) {
             // Si el pathfinder falla, intentar acercarse manualmente
-            bot.lookAt(block.position)
-            await nudgeForward(bot, 30)
+            try {
+                bot.lookAt(block.position)
+                await nudgeForward(bot, 30)
+                metricsCollector?.trackActionEnd(true, bot)
+            } catch (nudgeError) {
+                metricsCollector?.trackActionEnd(false, bot)
+            }
         }
+    } else {
+        metricsCollector?.trackActionEnd(true, bot)
     }
 }
 
-async function mineBlock(bot, block) {
+async function mineBlock(bot, block, metricsCollector = null) {
     if (!block) return
     
-    // Primero nos movemos al bloque
-    await moveToBlock(bot, block, 4)
-    
-    // Verificar que el bloque sigue existiendo
-    const currentBlock = bot.blockAt(block.position)
-    if (!currentBlock || currentBlock.type === 0) return
+    metricsCollector?.trackActionStart('mine', bot)
     
     try {
+        // Primero nos movemos al bloque
+        await moveToBlock(bot, block, 4)
+        
+        // Verificar que el bloque sigue existiendo
+        const currentBlock = bot.blockAt(block.position)
+        if (!currentBlock || currentBlock.type === 0) {
+            metricsCollector?.trackActionEnd(false, bot)
+            return
+        }
+        
         await bot.collectBlock.collect(currentBlock)
+        metricsCollector?.trackActionEnd(true, bot)
     } catch (e) {
         // Fallback: cavar manualmente
-        if (bot.canDigBlock(currentBlock)) {
-            await bot.dig(currentBlock)
+        try {
+            const currentBlock = bot.blockAt(block.position)
+            if (currentBlock && bot.canDigBlock(currentBlock)) {
+                await bot.dig(currentBlock)
+                metricsCollector?.trackActionEnd(true, bot)
+            } else {
+                metricsCollector?.trackActionEnd(false, bot)
+            }
+        } catch (digError) {
+            metricsCollector?.trackActionEnd(false, bot)
         }
     }
 }
@@ -170,7 +195,7 @@ async function exploreRandom(bot, distance = 30) {
     }
 }
 
-async function collectResource(bot, mcData, blockName, count) {
+async function collectResource(bot, mcData, blockName, count, metricsCollector = null) {
     const itemName = getItemNameFromBlock(blockName)
     const itemId = getItemId(mcData, itemName)
     if (!itemId) throw new Error(`Item inválido: ${itemName}`)
@@ -214,7 +239,7 @@ async function collectResource(bot, mcData, blockName, count) {
         noBlockStreak = 0
         
         try {
-            await mineBlock(bot, block)
+            await mineBlock(bot, block, metricsCollector)
         } catch (e) {
             // Ignorar errores de minado, intentar con otro bloque
             attempts++
@@ -281,6 +306,17 @@ async function placeBlock(bot, mcData, blockName) {
     const targetPos = bot.entity.position.offset(-Math.sin(yaw) * 2, 0, -Math.cos(yaw) * 2).floored()
     const groundPos = targetPos.offset(0, -1, 0)
     
+    let memoryPositions = fs.existsSync(`src/agents/memories/${bot.username}_memory.json`) ?
+        JSON.parse(fs.readFileSync(`src/agents/memories/${bot.username}_memory.json`, 'utf8')) : {}
+
+    const targetInMemory = Object.values(memoryPositions || {}).some(pos =>
+        pos && pos.x === targetPos.x && pos.y === targetPos.y && pos.z === targetPos.z
+    )
+
+    if (targetInMemory) {
+        console.log(`Ya hay un bloque en la posición objetivo: ${JSON.stringify(targetPos)}`)
+        await nudgeForward(bot, 10)
+    }
     const groundBlock = bot.blockAt(groundPos)
     const targetBlock = bot.blockAt(targetPos)
 
@@ -303,7 +339,6 @@ async function placeBlock(bot, mcData, blockName) {
     await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
 
     // Si es una mesa o un horno, guardar posición
-    const fs = await import('fs')
     const path = `src/agents/memories/${bot.username}_memory.json`
     
     console.log(`[placeBlock] Guardando posición de ${blockName} para usuario: ${bot.username}`)
