@@ -34,6 +34,9 @@
   - [x] Agents
   - [ ] Evaluations
   - [ ] HTN
+    - [x] Primitivas
+    - [x] Task
+    - [ ] Progresion
   - [ ] LLM ?
   - [x] Metrics
   - [ ] Server

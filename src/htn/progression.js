@@ -4,15 +4,15 @@ import Vec3 from 'vec3'
 
 import {
     collectResource,
-    smartCraft,
-    ensureCraftingTable,
     placeBlock,
-    smeltItem,
     getItemNameFromBlock,
     exploreRandom
-} from '../primitive_task.js'
-import { chopTree, obtainWoodType, obtainPlankType } from './wood.js'
-import { getCoal, getIron } from './mining.js'
+} from './primitive_task.js'
+import { craftItem } from './tasks/crafting.js'
+import { ensureCraftingTable } from './tasks/block_placement.js'
+import { smeltItem } from './tasks/smelting.js'
+import { chopTree, obtainWoodType, obtainPlankType } from './tasks/wood.js'
+import { getCoal, getIron } from './tasks/mining.js'
 
 // =========================================================
 // --- HELPERS DE REPLANIFICACIÓN ---
@@ -118,12 +118,12 @@ async function woodPhase(bot, mcData, has, guards, metricsCollector = null) {
     )
     
     bot.chat(`Craftear ${plankType} desde ${woodType}`)
-    await runTask(bot, 'Tablones', () => has(plankType, 12), async () => smartCraft(bot, mcData, plankType, 4))
-    await runTask(bot, 'Palos', () => has('stick', 4), async () => smartCraft(bot, mcData, 'stick', 2))
+    await runTask(bot, 'Tablones', () => has(plankType, 12), async () => craftItem(bot, mcData, plankType, 4))
+    await runTask(bot, 'Palos', () => has('stick', 4), async () => craftItem(bot, mcData, 'stick', 2))
 
     await runTask(bot, 'Asegurar Mesa', guards.isTablePlaced, async () => ensureCraftingTable(bot, mcData, 32), 3, replan(bot, 2))
 
-    await runTask(bot, 'Pico Madera', () => has('wooden_pickaxe', 1) || has('stone_pickaxe', 1), async () => smartCraft(bot, mcData, 'wooden_pickaxe', 1), 2)
+    await runTask(bot, 'Pico Madera', () => has('wooden_pickaxe', 1) || has('stone_pickaxe', 1), async () => craftItem(bot, mcData, 'wooden_pickaxe', 1), 2)
     const woodPick = bot.inventory.findInventoryItem(mcData.itemsByName.wooden_pickaxe.id)
     if (woodPick) await bot.equip(woodPick, 'hand')
 
@@ -137,7 +137,7 @@ async function woodPhase(bot, mcData, has, guards, metricsCollector = null) {
         replan(bot, 3)
     )
 
-    await runTask(bot, 'Pico Piedra', () => has('stone_pickaxe', 1) || has('iron_pickaxe', 1), async () => smartCraft(bot, mcData, 'stone_pickaxe', 1), 2)
+    await runTask(bot, 'Pico Piedra', () => has('stone_pickaxe', 1) || has('iron_pickaxe', 1), async () => craftItem(bot, mcData, 'stone_pickaxe', 1), 2)
     const stonePick = bot.inventory.findInventoryItem(mcData.itemsByName.stone_pickaxe.id)
     if (stonePick) await bot.equip(stonePick, 'hand')
 }
@@ -146,7 +146,7 @@ async function furnacePhase(bot, mcData, has, guards, metricsCollector = null) {
     // Solo se llama cuando ya tenemos materiales para fundir
     if (guards.isFurnacePlaced()) return
 
-    await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => smartCraft(bot, mcData, 'furnace', 1))
+    await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => craftItem(bot, mcData, 'furnace', 1))
     await runTask(bot, 'Colocar Horno', guards.isFurnacePlaced, async () => placeBlock(bot, mcData, 'furnace'), 2, replan(bot))
 }
 
@@ -175,7 +175,7 @@ async function ensureNearbyFurnace(bot, mcData, has, guards) {
 
         if (!found) {
             bot.chat('No tengo un horno cercano utilizable. Creando uno nuevo.')
-            await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => smartCraft(bot, mcData, 'furnace', 1))
+            await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => craftItem(bot, mcData, 'furnace', 1))
             await runTask(bot, 'Colocar Horno', guards.isFurnacePlaced, async () => placeBlock(bot, mcData, 'furnace'), 2, replan(bot))
         }
     } catch (e) {
@@ -204,8 +204,8 @@ async function ironPhase(bot, mcData, has, guards, metricsCollector = null) {
     )
 
     // 4. Crafteamos el pico
-    await runTask(bot, 'Recargar Palos', () => has('stick', 2), async () => smartCraft(bot, mcData, 'stick', 1))
-    await runTask(bot, 'Pico de Hierro', () => has('iron_pickaxe', 1), async () => smartCraft(bot, mcData, 'iron_pickaxe', 1))
+    await runTask(bot, 'Recargar Palos', () => has('stick', 2), async () => craftItem(bot, mcData, 'stick', 1))
+    await runTask(bot, 'Pico de Hierro', () => has('iron_pickaxe', 1), async () => craftItem(bot, mcData, 'iron_pickaxe', 1))
 }
 
 // =========================================================

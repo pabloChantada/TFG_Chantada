@@ -4,9 +4,9 @@ import minecraftData from 'minecraft-data'
 import inventoryViewer from 'mineflayer-web-inventory'
 
 // Tareas custom
-import { clearInventory } from './primitive_task.js'
-import { runFullProgression } from './tasks/progression.js'
-import { runSimpleProgression } from './tasks/simple_progression.js'
+import { clearInventory } from './primitives/primitive_task.js'
+import { runFullProgression } from './progression.js'
+import { runSimpleProgression } from './simple_progression.js'
 
 // ========================================================
 // --- CONSTANTES Y CONFIGURACIONES ---
