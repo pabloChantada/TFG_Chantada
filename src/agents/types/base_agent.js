@@ -4,7 +4,7 @@
  * 
  * @class BaseAgent
  * @param {string} agentName - The name of the agent.
- * @param {string} [agentType='base'] - The type of the agent.
+ * @param {string} [agentType=`base`] - The type of the agent.
  */
  
 /**
@@ -73,15 +73,15 @@
  */
 
 
-import { initBot } from '../../llm/src/utils/mcdata.js';
-import { addBrowserViewer } from '../../llm/src/agent/vision/browser_viewer.js';
-import { serverProxy } from '../../llm/src/agent/mindserver_proxy.js';
-import fs from 'fs';
-import path from 'path';
+import { initBot } from `../../llm/src/utils/mcdata.js`;
+import { addBrowserViewer } from `../../llm/src/agent/vision/browser_viewer.js`;
+import { serverProxy } from `../../llm/src/agent/mindserver_proxy.js`;
+import fs from `fs`;
+import path from `path`;
 
 
 export class BaseAgent {
-    constructor(agentName, agentType = 'base') {
+    constructor(agentName, agentType = `base`) {
         this.name = agentName;
         this.agentType = agentType;
         this.bot = null;
@@ -133,29 +133,29 @@ export class BaseAgent {
         // and rejects if there is an error or if it gets kicked from the server
         return new Promise((resolve, reject) => {
             // Connecting to the server (25565)
-            this.bot.on('login', () => {
+            this.bot.on(`login`, () => {
                 console.log(`[INFO] [${this.name}] Logged in to server`);
                 serverProxy.login();
             });
             // Handle connection errors
-            this.bot.on('error', (err) => {
+            this.bot.on(`error`, (err) => {
                 console.error(`[ERROR] [${this.name}] Bot error:`, err);
                 reject(err);
             });
             // Handle being kicked from the server
-            this.bot.on('kicked', (reason) => {
+            this.bot.on(`kicked`, (reason) => {
                 console.error(`[ERROR] [${this.name}] Bot kicked:`, reason);
                 reject(new Error(`[ERROR] Kicked: ${reason}`));
             });
             // Handle spawn event
-            this.bot.once('spawn', async () => {
+            this.bot.once(`spawn`, async () => {
                 console.log(`[INFO] [${this.name}] Spawned in world`);
                 resolve();
             });
 
             // Timeout if spawn takes too long
             setTimeout(() => {
-                reject(new Error('[ERROR] Spawn timeout'));
+                reject(new Error(`[ERROR] Spawn timeout`));
             }, 30000);
         });
     }
@@ -182,7 +182,7 @@ export class BaseAgent {
      * Implement in subclass - contains agent-specific logic
      */
     async runLogic() {
-        throw new Error('runLogic() must be implemented in subclass');
+        throw new Error(`runLogic() must be implemented in subclass`);
     }
 
     /**

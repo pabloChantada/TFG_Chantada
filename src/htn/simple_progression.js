@@ -1,11 +1,11 @@
 import {
     collectResource,
-    smartCraft,
-    ensureCraftingTable,
     getItemNameFromBlock,
     getItemId
-} from '../primitive_task.js'
-import { obtainWoodType, obtainPlankType } from './wood.js'
+} from './primitive_task.js'
+import { craftItem } from './tasks/crafting.js'
+import { ensureCraftingTable } from './tasks/block_placement.js'
+import { obtainWoodType, obtainPlankType } from './tasks/wood.js'
 
 // =========================================================
 // --- PROGRESIÓN SIMPLE PARA TESTING ---
@@ -35,14 +35,14 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
             }
 
             const craftPlanksAmount = Math.ceil(neededPlanks / 4) * 4
-            await smartCraft(bot, mcData, plankType, craftPlanksAmount)
+            await craftItem(bot, mcData, plankType, craftPlanksAmount)
         }
 
         if (!has('stick', minSticks)) {
             // Craftear en múltiplos de 4
             const neededSticks = Math.max(minSticks - (getItemId(mcData, 'stick') ? bot.inventory.count(getItemId(mcData, 'stick')) : 0), 0)
             const craftSticksAmount = Math.ceil(neededSticks / 4) * 4
-            await smartCraft(bot, mcData, 'stick', craftSticksAmount || 4)
+            await craftItem(bot, mcData, 'stick', craftSticksAmount || 4)
         }
     }
 
@@ -79,7 +79,7 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
             let crafted = false
             for (let i = 0; i < 3 && !crafted; i++) {
                 try {
-                    await smartCraft(bot, mcData, plankType, 12)
+                    await craftItem(bot, mcData, plankType, 12)
                     crafted = true
                 } catch (err) {
                     bot.chat(`[1.2] Reintentando tablones (${i + 1}/3)...`)
@@ -91,7 +91,7 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
         // Craftar palos si es necesario
         if (!has('stick', 4)) {
             bot.chat(`[1.3] Crafteando palos...`);
-            await smartCraft(bot, mcData, 'stick', 4);
+            await craftItem(bot, mcData, 'stick', 4);
         }
 
         // === FASE 2: MESA DE CRAFTEO ===
@@ -101,8 +101,8 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
         const isTablePlaced = () => bot.findBlock({ matching: tableId, maxDistance: 16 }) !== null;
         
         if (!isTablePlaced()) {
-            await smartCraft(bot, mcData, 'crafting_table', 1);
-            const { placeBlock } = await import('../primitive_task.js');
+            await craftItem(bot, mcData, 'crafting_table', 1);
+            const { placeBlock } = await import('./primitive_task.js');
             await placeBlock(bot, mcData, 'crafting_table');
             bot.chat('[OK] Mesa colocada');
         } else {
@@ -123,7 +123,7 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
             let craftedPick = false
             for (let i = 0; i < 3 && !craftedPick; i++) {
                 try {
-                    await smartCraft(bot, mcData, 'wooden_pickaxe', 1)
+                    await craftItem(bot, mcData, 'wooden_pickaxe', 1)
                     craftedPick = true
                 } catch (_err) {
                     bot.chat(`[3.3] Reintentando pico (${i + 1}/3)...`)
@@ -148,7 +148,7 @@ async function runSimpleProgression(bot, mcData, metricsCollector = null) {
         bot.chat('[FASE 5] Crafteando pico de piedra...');
         
         if (!has('stone_pickaxe', 1)) {
-            await smartCraft(bot, mcData, 'stone_pickaxe', 1);
+            await craftItem(bot, mcData, 'stone_pickaxe', 1);
             const stonePick = bot.inventory.findInventoryItem(getItemId(mcData, 'stone_pickaxe'));
             if (stonePick) await bot.equip(stonePick, 'hand');
         }

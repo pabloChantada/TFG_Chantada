@@ -9,65 +9,65 @@
  *   spawned with settings from mindserver
  */
 
-import { serverProxy } from '../llm/src/agent/mindserver_proxy.js';
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+import { serverProxy } from `../llm/src/agent/mindserver_proxy.js`;
+import yargs from `yargs`;
+import { hideBin } from `yargs/helpers`;
 
 (async () => {
     try {
         // Parse command line arguments
         const args = yargs(hideBin(process.argv))
-            .option('name', {
-                alias: 'n',
-                type: 'string',
-                description: 'Agent name',
+            .option(`name`, {
+                alias: `n`,
+                type: `string`,
+                description: `Agent name`,
                 default: `Agent_${Math.floor(Math.random() * 10)}`
             })
-            .option('type', {
-                alias: 't',
-                type: 'string',
-                description: 'Agent type (htn, rl, llm)',
-                default: 'htn',
-                choices: ['htn', 'rl', 'llm']
+            .option(`type`, {
+                alias: `t`,
+                type: `string`,
+                description: `Agent type (htn, rl, llm)`,
+                default: `htn`,
+                choices: [`htn`, `rl`, `llm`]
             })
-            .option('port', {
-                alias: 'p',
-                type: 'number',
-                description: 'MindServer port',
+            .option(`port`, {
+                alias: `p`,
+                type: `number`,
+                description: `MindServer port`,
                 default: 8080
             })
-            .option('minecraft-port', {
-                alias: 'mp',
-                type: 'number',
-                description: 'Minecraft server port',
+            .option(`minecraft-port`, {
+                alias: `mp`,
+                type: `number`,
+                description: `Minecraft server port`,
                 default: 25565
             })
-            .option('count', {
-                alias: 'c',
-                type: 'number',
-                description: 'Agent index for multi-agent scenarios',
+            .option(`count`, {
+                alias: `c`,
+                type: `number`,
+                description: `Agent index for multi-agent scenarios`,
                 default: 0
             })
-            .option('load-memory', {
-                alias: 'l',
-                type: 'boolean',
-                description: 'Load previous memory',
+            .option(`load-memory`, {
+                alias: `l`,
+                type: `boolean`,
+                description: `Load previous memory`,
                 default: false
             })
-            .option('init-message', {
-                alias: 'm',
-                type: 'string',
-                description: 'Initial message for agent',
+            .option(`init-message`, {
+                alias: `m`,
+                type: `string`,
+                description: `Initial message for agent`,
                 default: null
             })
-            .option('metrics-path', {
-                type: 'string',
-                description: 'Path to export metrics JSON',
-                default: 'src/metrics/agent_metrics'
+            .option(`metrics-path`, {
+                type: `string`,
+                description: `Path to export metrics JSON`,
+                default: `src/metrics/agent_metrics`
             })
             .help()
-            .example('node src/agents/add_agent.js --name HTNTest --type htn', 'Add HTN agent')
-            .example('node src/agents/add_agent.js -n Agent1 -t llm -c 0', 'Add LLM agent with index 0')
+            .example(`node src/agents/add_agent.js --name HTNTest --type htn`, `Add HTN agent`)
+            .example(`node src/agents/add_agent.js -n Agent1 -t llm -c 0`, `Add LLM agent with index 0`)
             .parse();
 
         const agentName = args.name;
@@ -84,10 +84,10 @@ import { hideBin } from 'yargs/helpers';
         try {
             settings = await new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error('Timeout waiting for settings'));
+                    reject(new Error(`Timeout waiting for settings`));
                 }, 2000);
                 
-                serverProxy.socket.emit('get-settings', agentName, (response) => {
+                serverProxy.socket.emit(`get-settings`, agentName, (response) => {
                     clearTimeout(timeout);
                     if (response.error) {
                         reject(new Error(response.error));
@@ -100,10 +100,10 @@ import { hideBin } from 'yargs/helpers';
             // Server not responding, build settings from CLI args
             console.log(`[${agentName}] Building settings from CLI arguments...`);
             settings = buildAgentSettings(agentName, agentType, {
-                minecraftPort: args['minecraft-port'],
-                loadMemory: args['load-memory'],
-                metricsPath: args['metrics-path'],
-                initMessage: args['init-message']
+                minecraftPort: args[`minecraft-port`],
+                loadMemory: args[`load-memory`],
+                metricsPath: args[`metrics-path`],
+                initMessage: args[`init-message`]
             });
         }
 
@@ -112,12 +112,12 @@ import { hideBin } from 'yargs/helpers';
         
         // Dynamically import correct agent class
         let AgentClass;
-        if (finalAgentType === 'htn') {
-            const module = await import('./htn_agent.js');
+        if (finalAgentType === `htn`) {
+            const module = await import(`./htn_agent.js`);
             AgentClass = module.HTNAgent;
-        } else if (finalAgentType === 'llm') {
+        } else if (finalAgentType === `llm`) {
             // For LLM agents, use the Mindcraft Agent
-            const module = await import('../llm/src/agent/agent.js');
+            const module = await import(`../llm/src/agent/agent.js`);
             AgentClass = module.Agent;
         } else {
             throw new Error(`Unknown agent type: ${finalAgentType}`);
@@ -128,8 +128,8 @@ import { hideBin } from 'yargs/helpers';
         serverProxy.setAgent(agent);
         
         const viewerPort = 3000 + agentIndex;
-        const loadMemory = args['load-memory'] || settings.load_memory || false;
-        const initMessage = args['init-message'] || settings.init_message || null;
+        const loadMemory = args[`load-memory`] || settings.load_memory || false;
+        const initMessage = args[`init-message`] || settings.init_message || null;
         
         await agent.start(
             settings,
@@ -139,7 +139,7 @@ import { hideBin } from 'yargs/helpers';
         );
         
     } catch (error) {
-        console.error('[ERROR] Failed to start agent:');
+        console.error(`[ERROR] Failed to start agent:`);
         console.error(error.message);
         console.error(error.stack);
         process.exit(1);
@@ -160,10 +160,10 @@ function buildAgentSettings(agentName, agentType, options = {}) {
             name: agentName,
             agent_type: agentType
         },
-        host: options.minecraftHost || options.host || '127.0.0.1',
+        host: options.minecraftHost || options.host || `127.0.0.1`,
         port: options.minecraftPort || options.port || 25565,
-        auth: options.auth || 'offline',
-        minecraft_version: options.minecraftVersion || options.minecraft_version || 'auto',
+        auth: options.auth || `offline`,
+        minecraft_version: options.minecraftVersion || options.minecraft_version || `auto`,
         load_memory: options.loadMemory || options.load_memory || false,
         init_message: options.initMessage || options.init_message || null,
         render_bot_view: options.noViewer ? false : (options.renderBotView !== false && options.render_bot_view !== false),

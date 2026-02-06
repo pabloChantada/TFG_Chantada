@@ -1,15 +1,15 @@
 
 
-import { BaseAgent } from './types/base_agent.js';
-import { serverProxy } from '../llm/src/agent/mindserver_proxy.js';
-import { startHTN } from '../htn/main_htn.js';
-import { MetricsCollector } from '../metrics/metrics_collector.js';
+import { BaseAgent } from `./types/base_agent.js`;
+import { serverProxy } from `../llm/src/agent/mindserver_proxy.js`;
+import { startHTN } from `../htn/main_htn.js`;
+import { MetricsCollector } from `../metrics/metrics_collector.js`;
 
 export class HTNAgent extends BaseAgent {
     constructor(agentName) {
-        super(agentName, 'htn');
+        super(agentName, `htn`);
         // Recolect metrics specific to HTN execution
-        this.metricsCollector = new MetricsCollector(agentName, 'htn');
+        this.metricsCollector = new MetricsCollector(agentName, `htn`);
         this.memoryPath = `src/agents/memories/${agentName}_memory.json`;
     }
 
@@ -25,7 +25,7 @@ export class HTNAgent extends BaseAgent {
             // Initialize metrics collection
             await this.metricsCollector.initialize(
                 settings.metrics_export_path,
-                settings.task?.goal || 'Default HTN progression',
+                settings.task?.goal || `Default HTN progression`,
                 true,
                 viewerPort
             );
@@ -48,8 +48,8 @@ export class HTNAgent extends BaseAgent {
 
             // Mock components required by getFullState
             // Required by ServerProxy
-            this.bot.modes = { getMiniDocs: () => 'HTN Mode' };
-            this.actions = { currentActionLabel: 'HTN Task Execution' };
+            this.bot.modes = { getMiniDocs: () => `HTN Mode` };
+            this.actions = { currentActionLabel: `HTN Task Execution` };
 
             // Handle graceful shutdown on Ctrl+C
             const handleShutdown = async (signal) => {
@@ -59,8 +59,8 @@ export class HTNAgent extends BaseAgent {
                 await this.shutdown();
                 process.exit(0);
             };
-            process.on('SIGINT', () => handleShutdown('SIGINT'));
-            process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+            process.on(`SIGINT`, () => handleShutdown(`SIGINT`));
+            process.on(`SIGTERM`, () => handleShutdown(`SIGTERM`));
 
             // Start HTN logic
             console.log(`[INFO] [${this.name}] Starting HTN execution...`);
