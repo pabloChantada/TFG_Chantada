@@ -1,5 +1,5 @@
-import { collectResource } from '../primitive_task.js'
 import { getBiomeName } from '../utils.js'
+import { mineBlock } from './mining.js';
 
 // Some other types may be needed, for now we use these
 const biomeToWoodType = {
@@ -114,7 +114,7 @@ async function obtainPlankType(bot, mcData, woodType, metricsCollector = null) {
 async function chop(bot, mcData, logs = 4, metricsCollector = null) {
     const woodType = await obtainWoodType(bot, mcData);
     console.log(`[Wood.js] Detected biome. Searching for: ${woodType}`);
-    const finalCount = await collectResource(bot, mcData, woodType, logs);
+    const finalCount = await mineBlock(bot, mcData, woodType, logs);
     return finalCount;
 }
 
