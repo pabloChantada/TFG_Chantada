@@ -358,6 +358,9 @@ if __name__ == "__main__":
     print("  result = predict(model, 'ruta/a/imagen.png')")
     print("  visualize_prediction(result)")
 
+    prediction_example = "src/metrics/example.png"
+    prediction_result = predict(model, prediction_example)
+    visualize_prediction(prediction_result)
     # Obtener un archivo aleatorio del directorio
     screenshots_dir = "src/metrics/agent_metrics/Agent1/screenshots"
     image_files = glob.glob(os.path.join(screenshots_dir, "*.png")) + \

@@ -12,7 +12,7 @@
 import * as EvalServer from './mindcraft.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { buildAgentSettings } from '../agents/create_agent.js';
+import { HTNAgent } from '../agents/htn_agent.js';
 
 const args = yargs(hideBin(process.argv))
     .option('port', {
@@ -198,6 +198,35 @@ process.on('SIGINT', () => {
 });
 
 /**
+ * Build a standardized settings object for agent creation
+ * 
+ * @param {string} agentName - Agent name
+ * @param {string} agentType - Agent type (htn, rl, llm)
+ * @param {Object} options - Additional configuration options
+ * @returns {Object} Settings object ready for agent.start()
+ */
+function buildAgentSettings(agentName, agentType, options = {}) {
+    return {
+        profile: {
+            name: agentName,
+            agent_type: agentType
+        },
+        host: options.minecraftHost || options.host || '127.0.0.1',
+        port: options.minecraftPort || options.port || 25565,
+        auth: options.auth || 'offline',
+        minecraft_version: options.minecraftVersion || options.minecraft_version || 'auto',
+        load_memory: options.loadMemory || options.load_memory || false,
+        init_message: options.initMessage || options.init_message || null,
+        render_bot_view: options.noViewer ? false : (options.renderBotView !== false && options.render_bot_view !== false),
+        spawn_timeout: options.spawnTimeout || options.spawn_timeout || 30,
+        metrics_enabled: options.metricsEnabled !== false && options.metrics_enabled !== false,
+        metrics_export_path: options.metricsPath || options.metrics_export_path || null,
+        mindserver_port: options.mindserverPort || options.mindserver_port || 8080,
+        task: options.task || null
+    };
+}
+
+/**
  * Create a single agent from CLI arguments
  */
 async function createAgentFromCLI(agentType, agentName, cliArgs) {
@@ -205,14 +234,21 @@ async function createAgentFromCLI(agentType, agentName, cliArgs) {
         minecraftHost: cliArgs.minecraftHost,
         minecraftPort: cliArgs.minecraftPort,
         minecraftVersion: cliArgs.minecraftVersion,
-        noViewer: cliArgs.noViewer
+        noViewer: cliArgs.noViewer,
+        mindserverPort: cliArgs.port,
+        metricsPath: `src/metrics/agent_metrics/${agentName}_metrics.json`
     });
 
-    const result = await EvalServer.createAgent(settings);
-    
-    if (result.success) {
-        console.log(`[INFO] Agent ${agentName} created successfully`);
-    } else {
-        console.error(`[ERROR] Failed to create agent ${agentName}: ${result.error}`);
+    try {
+        if (agentType === 'htn') {
+            const agent = new HTNAgent(agentName);
+            const viewerPort = 3000 + (parseInt(cliArgs.name?.split(/\D+/).pop()) || 0);
+            await agent.start(settings, viewerPort);
+            console.log(`[INFO] Agent ${agentName} created successfully`);
+        } else {
+            console.error(`[ERROR] Agent type ${agentType} not yet supported in server.js. Use add_agent.js instead.`);
+        }
+    } catch (error) {
+        console.error(`[ERROR] Failed to create agent ${agentName}: ${error.message}`);
     }
 }

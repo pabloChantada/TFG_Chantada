@@ -1,226 +1,308 @@
-import pkg from 'mineflayer-pathfinder'
-const { goals } = pkg
-import Vec3 from 'vec3'
+// Imports for Primitives (Low Level)
+import { mineBlock } from './primitives/mining.js'
+import { exploreRandom, moveToBlock } from './primitives/movement.js'
+import { hasItem, getItemId } from './primitives/inventory.js'
+import { 
+    chop, 
+    obtainWoodType, 
+    obtainPlankType 
+} from './primitives/wood.js'
 
-import {
-    collectResource,
-    placeBlock,
-    getItemNameFromBlock,
-    exploreRandom
-} from './primitive_task.js'
+// Imports for Composite Tasks (High Level)
 import { craftItem } from './tasks/crafting.js'
-import { ensureCraftingTable } from './tasks/block_placement.js'
+import { ensureCraftingTable, placeBlockFull } from './tasks/block_placement.js'
 import { smeltItem } from './tasks/smelting.js'
-import { chopTree, obtainWoodType, obtainPlankType } from './tasks/wood.js'
-import { getCoal, getIron } from './tasks/mining.js'
 
-// =========================================================
-// --- HELPERS DE REPLANIFICACIÓN ---
-// =========================================================
+/**
+ * =========================================================
+ * ERROR HANDLING AND REPLANNING SYSTEM
+ * =========================================================
+ */
 
-async function exploreArea(bot, steps = 1) {
-    // Usa exploreRandom de primitives para exploración más efectiva
-    for (let i = 0; i < steps; i++) {
-        await exploreRandom(bot, 10 + i * 10)
-        await bot.waitForTicks(10)
+/**
+ * Executes a task with retry and recovery logic.
+ * We define a recovery task, applying real recursion in replanning, not just an alternative step.
+ * @param {Bot} bot - Bot instance
+ * @param {string} taskName - Name for logs
+ * @param {Function} conditionFn - Function that returns true if task is done (post-condition)
+ * @param {Function} actionFn - Main action to execute
+ * @param {Function} recoveryFn - (Optional) Action to execute if actionFn fails (e.g., craft new pickaxe)
+ */
+async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = null) {
+    if (await conditionFn()) {
+        console.log(`[SKIP] [${bot.name}] ${taskName} completed. Skipping...`)
+        return
+    }
+
+    bot.chat(`[START] [${bot.name}] ${taskName}`)
+    let attempts = 0
+    const maxAttempts = 5
+
+    while (!await conditionFn() && attempts < maxAttempts) {
+        try {
+            await actionFn()
+            await bot.waitForTicks(10)
+        } catch (err) {
+            console.error(`[ERROR] [${bot.name}] ${taskName}: ${err.message}`)
+            bot.chat(`[FAIL] [${bot.name}] ${taskName} - Try ${attempts + 1}/${maxAttempts}`)
+
+            // Replan
+            if (recoveryFn) {
+                console.log(`[REPLAN] Executing recovery for ${taskName}...`)
+                try {
+                    await recoveryFn(err)
+                    console.log(`[REPLAN] Recovery finished. Retrying main task.`)
+                    continue 
+                } catch (recoveryErr) {
+                    console.error(`[FATAL] Recovery failed: ${recoveryErr.message}`)
+                }
+            }
+            
+            // If no recovery or it failed, increment attempts and explore to get unstuck
+            attempts++
+            await exploreRandom(bot, 10) 
+        }
+    }
+
+    if (!await conditionFn()) {
+        throw new Error(`[ABORT] [${bot.name}] Could not complete ${taskName} after ${maxAttempts} attempts.`)
+    }
+    console.log(`[COMPLETED] [${bot.name}] ${taskName}`)
+}
+
+/**
+ * =========================================================
+ * TOOL LOGIC (REAL REPLANNING)
+ * =========================================================
+ */
+
+/**
+ * Ensures the bot has the specified item equipped, with internal logic to recover if it's missing (e.g., craft a new one).
+ * @param {Bot} bot - The mineflayer bot instance.
+ * @param {Object} mcData - The minecraft data for the bot's version.
+ * @param {string} itemName - The name of the item to ensure is equipped (e.g., "wooden_pickaxe").
+ * @param {Function} materialSourceFn - (Optional) An async function that provides necessary materials if crafting is needed (e.g., mining stone for a new pickaxe).
+ * @returns {Promise<void>}
+ */
+async function ensureEquipped(bot, mcData, itemName, materialSourceFn = null) {
+    const item = bot.inventory.findInventoryItem(getItemId(mcData, itemName), null)
+    
+    if (item) {
+        await bot.equip(item, 'hand')
+        return
+    }
+
+    console.log(`[REPLAN] I don't have ${itemName}. Crafting a new one...`)
+    
+    // Prerequisite: To craft tools we need wood/sticks and a crafting table
+    // This is a mini-dependency chain
+    if (!hasItem(bot, mcData, 'stick', 2)) {
+        await ensureWoodAndPlanks(bot, mcData, 2) // We need wood for sticks
+        await craftItem(bot, mcData, 'stick', 1) // Craft sticks
+    }
+
+    // Ensure nearby crafting table
+    await ensureCraftingTable(bot, mcData)
+
+    // If we need specific materials (e.g., cobblestone for stone pickaxe)
+    if (materialSourceFn) {
+        await materialSourceFn()
+    }
+
+    await craftItem(bot, mcData, itemName, 1)
+    
+    // Equip the new item
+    const newItem = bot.inventory.findInventoryItem(getItemId(mcData, itemName), null)
+    if (newItem) await bot.equip(newItem, 'hand')
+    else throw new Error(`Could not equip ${itemName} even after crafting it.`)
+}
+
+// Specific recovery helpers
+async function ensureWoodAndPlanks(bot, mcData, amountLogs = 3) {
+    // 1. Get logs
+    const woodType = await obtainWoodType(bot, mcData)
+    if (!hasItem(bot, mcData, woodType, 1)) {
+        await chop(bot, mcData, amountLogs)
+    }
+    // 2. Convert to planks
+    const plankType = await obtainPlankType(bot, mcData, woodType)
+    if (!hasItem(bot, mcData, plankType, 4)) {
+        await craftItem(bot, mcData, plankType, 1) // 1 log = 4 planks
     }
 }
 
 /**
- * runTask admite un replanFn(err, attempt) que, si devuelve true,
- * considera manejado el error y reintenta sin fallar la tarea.
+ * =========================================================
+ * PROGRESSION PHASES
+ * =========================================================
  */
-async function runTask(bot, name, checkFn, actionFn, retries = 1, replanFn = null) {
-    if (checkFn()) {
-        bot.chat(`[SKIP] ${name}`)
-        return null
-    }
 
-    bot.chat(`[START] ${name}`)
-
-    for (let i = 0; i <= retries; i++) {
-        try {
-            const result = await actionFn()
-            await bot.waitForTicks(10)
-
-            if (checkFn()) {
-                bot.chat(`[OK] ${name}`)
-                return result
-            }
-            throw new Error('Acción finalizada pero condición no cumplida.')
-        } catch (err) {
-            console.error(`Error en ${name}: ${err.message}`)
-
-            if (replanFn) {
-                const handled = await replanFn(err, i)
-                if (handled) {
-                    bot.chat(`[REPLAN] ${name}: nuevo intento (${i + 1}/${retries})`)
-                    continue
-                }
-            }
-
-            if (i < retries) {
-                bot.chat(`Reintentando ${name}...`)
-                await bot.waitForTicks(40)
-            } else {
-                bot.chat(`[FAIL] ${name}`)
-                throw err
-            }
-        }
-    }
-}
-
-const replan = (bot, stepsBase = 2) => async (_err, attempt = 0) => {
-    await exploreArea(bot, stepsBase + attempt)
-    return true
-}
-
-// =========================================================
-// --- FASES DE PROGRESIÓN ---
-// =========================================================
-
-function createHas(bot, mcData) {
-    return (name, count = 1) => {
-        const finalName = getItemNameFromBlock(name)
-        const id = mcData.itemsByName[finalName]?.id
-        return id ? bot.inventory.count(id) >= count : false
-    }
-}
-
-function createPhaseGuards(bot, mcData, has) {
-    const tableId = () => mcData.blocksByName.crafting_table.id
-    const isTablePlaced = () => bot.findBlock({ matching: tableId(), maxDistance: 16 }) !== null
-    const isFurnacePlaced = () => bot.findBlock({ matching: mcData.blocksByName.furnace.id, maxDistance: 16 }) !== null
-
-    return {
-        isTablePlaced,
-        isFurnacePlaced,
-        atStone: () => has('stone_pickaxe', 1) || has('iron_pickaxe', 1),
-        atFurnace: () => has('furnace', 1) || isFurnacePlaced() || has('iron_pickaxe', 1),
-        atIron: () => has('iron_pickaxe', 1)
-    }
-}
-
-async function woodPhase(bot, mcData, has, guards, metricsCollector = null) {
-    if (guards.atStone()) return
-
-    // Madera: tarea crítica, más reintentos
+async function phaseWood(bot, mcData) {
     const woodType = await obtainWoodType(bot, mcData)
-    const plankType = obtainPlankType(woodType)
-    
-    await runTask(
-        bot,
-        'Madera',
-        () => has(woodType, 4),
-        async () => chopTree(bot, mcData, 4, metricsCollector),
-        5,
-        replan(bot, 3)
-    )
-    
-    bot.chat(`Craftear ${plankType} desde ${woodType}`)
-    await runTask(bot, 'Tablones', () => has(plankType, 12), async () => craftItem(bot, mcData, plankType, 4))
-    await runTask(bot, 'Palos', () => has('stick', 4), async () => craftItem(bot, mcData, 'stick', 2))
+    const plankType = await obtainPlankType(bot, mcData, woodType)
 
-    await runTask(bot, 'Asegurar Mesa', guards.isTablePlaced, async () => ensureCraftingTable(bot, mcData, 32), 3, replan(bot, 2))
-
-    await runTask(bot, 'Pico Madera', () => has('wooden_pickaxe', 1) || has('stone_pickaxe', 1), async () => craftItem(bot, mcData, 'wooden_pickaxe', 1), 2)
-    const woodPick = bot.inventory.findInventoryItem(mcData.itemsByName.wooden_pickaxe.id)
-    if (woodPick) await bot.equip(woodPick, 'hand')
-
-    // Piedra: tarea crítica, más reintentos y exploración más agresiva
-    await runTask(
-        bot,
-        'Piedra Total',
-        () => has('stone', 11) || guards.atFurnace(),
-        async () => collectResource(bot, mcData, 'stone', 11, metricsCollector),
-        5,
-        replan(bot, 3)
+    // Task 1: Collect wood
+    // Doesn't need complex recovery, if chop fails it's usually because no trees are found -> exploreRandom
+    await runSmartTask(
+        bot, 
+        'Collect Wood',
+        async () => hasItem(bot, mcData, woodType, 5), // Condition
+        async () => chop(bot, mcData, 5)           // Action
     )
 
-    await runTask(bot, 'Pico Piedra', () => has('stone_pickaxe', 1) || has('iron_pickaxe', 1), async () => craftItem(bot, mcData, 'stone_pickaxe', 1), 2)
-    const stonePick = bot.inventory.findInventoryItem(mcData.itemsByName.stone_pickaxe.id)
-    if (stonePick) await bot.equip(stonePick, 'hand')
+    // Task 2: Craft planks
+    await runSmartTask(
+        bot, 'Craft Planks',
+        async () => hasItem(bot, mcData, plankType, 12),
+        async () => craftItem(bot, mcData, plankType, 4)
+    )
+
+    // Task 3: Build crafting table
+    await runSmartTask(
+        bot, 'Place Crafting Table',
+        async () => hasItem(bot, mcData, 'crafting_table', 1) || bot.findBlock({ matching: mcData.blocksByName.crafting_table.id, maxDistance: 10 }),
+        async () => ensureCraftingTable(bot, mcData) // This already handles crafting and placement
+    )
+
+    // Task 4: Craft wooden pickaxe
+    // Recovery: If it fails (e.g., no sticks), the ensureEquipped function has internal logic,
+    // but we define it explicitly as a task here
+    await runSmartTask(
+        bot, 'Craft Wooden Pickaxe',
+        async () => hasItem(bot, mcData, 'wooden_pickaxe'),
+        async () => {
+            if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
+            await craftItem(bot, mcData, 'wooden_pickaxe', 1)
+        }
+    )
 }
 
-async function furnacePhase(bot, mcData, has, guards, metricsCollector = null) {
-    // Solo se llama cuando ya tenemos materiales para fundir
-    if (guards.isFurnacePlaced()) return
-
-    await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => craftItem(bot, mcData, 'furnace', 1))
-    await runTask(bot, 'Colocar Horno', guards.isFurnacePlaced, async () => placeBlock(bot, mcData, 'furnace'), 2, replan(bot))
-}
-
-async function ensureNearbyFurnace(bot, mcData, has, guards) {
-    // Si no tenemos un horno cerca, lo creamos
-    try {
-        const fs = await import('fs')
-        const path = `src/agents/memories/${bot.username}_memory.json`
-        let found = false
-
-        if (fs.existsSync(path)) {
-            const positions = JSON.parse(fs.readFileSync(path, 'utf8'))
-            if (positions.furnace) {
-                const pos = positions.furnace
-                const target = new Vec3(pos.x, pos.y, pos.z)
-
-                if (bot.entity.position.distanceTo(target) <= 32) {
-                    bot.chat('Yendo al horno conocido en ' + target)
-                    await bot.pathfinder.goto(new goals.GoalNear(target.x, target.y, target.z, 2))
-                    found = true
-                } else {
-                    bot.chat('El horno conocido está muy lejos. Ignorando memoria.')
+async function phaseStone(bot, mcData) {
+    // Task: Get stone (Cobblestone)
+    // REPLANNING: If mineBlock fails, we assume it might be because of missing pickaxe.
+    await runSmartTask(
+        bot,
+        'Mine Stone',
+        async () => hasItem(bot, mcData, 'cobblestone', 14), // 3 for pickaxe, 8 for furnace, 3 extra
+        async () => {
+            // Before mining, ensure tool
+            await ensureEquipped(bot, mcData, 'wooden_pickaxe', async () => {
+                // If we need to recover the wooden pickaxe, what do we need?
+                // Wood. (Defined in generic ensureEquipped)
+            })
+            await mineBlock(bot, mcData, 'stone', 14) 
+        },
+        // Recovery Fn for the main runSmartTask loop
+        async (err) => {
+            if (err.message.includes('No block provided') || err.message.includes('TIMEOUT')) {
+                 await exploreRandom(bot, 20) // Move if we can't find stone
+            } else {
+                // If the error was about the tool, ensureEquipped will try to fix it in the next cycle,
+                // but we can force a check here.
+                console.log(`[REPLAN] Checking if I need to recover my wooden pickaxe...`)
+                const hasPickaxe = bot.inventory.findInventoryItem(getItemId(mcData, 'wooden_pickaxe'), null)
+                if (!hasPickaxe) {
+                    console.log(`[REPLAN] I don't have a wooden pickaxe. Crafting one before retrying...`)
+                    await ensureEquipped(bot, mcData, 'wooden_pickaxe') // This will handle full recovery
                 }
             }
         }
-
-        if (!found) {
-            bot.chat('No tengo un horno cercano utilizable. Creando uno nuevo.')
-            await runTask(bot, 'Craftear Horno', () => has('furnace', 1) || guards.isFurnacePlaced(), async () => craftItem(bot, mcData, 'furnace', 1))
-            await runTask(bot, 'Colocar Horno', guards.isFurnacePlaced, async () => placeBlock(bot, mcData, 'furnace'), 2, replan(bot))
-        }
-    } catch (e) {
-        console.error('Error reading memory:', e)
-    }
-}
-
-async function ironPhase(bot, mcData, has, guards, metricsCollector = null) {
-    if (guards.atIron()) return
-
-    // 1. Primero minamos carbón y hierro
-    await runTask(bot, 'Carbón', () => has('coal', 3), async () => getCoal(bot, mcData, 3), 3, replan(bot, 4))
-    await runTask(bot, 'Hierro', () => has('raw_iron', 3) || has('iron_ingot', 3), async () => getIron(bot, mcData, 3), 3, replan(bot, 4))
-
-    // 2. Ahora que tenemos materiales, ponemos el horno
-    await ensureNearbyFurnace(bot, mcData, has, guards)
-
-    // 3. Fundimos el hierro
-    await runTask(
-        bot,
-        'Lingote de Hierro',
-        () => has('iron_ingot', 3),
-        async () => smeltItem(bot, mcData, 'iron_ingot', 3),
-        2,
-        replan(bot)
     )
 
-    // 4. Crafteamos el pico
-    await runTask(bot, 'Recargar Palos', () => has('stick', 2), async () => craftItem(bot, mcData, 'stick', 1))
-    await runTask(bot, 'Pico de Hierro', () => has('iron_pickaxe', 1), async () => craftItem(bot, mcData, 'iron_pickaxe', 1))
+    // Task: Craft stone pickaxe
+    await runSmartTask(
+        bot, 'Craft Stone Pickaxe',
+        async () => hasItem(bot, mcData, 'stone_pickaxe'),
+        async () => {
+            await ensureCraftingTable(bot, mcData)
+            if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
+            await craftItem(bot, mcData, 'stone_pickaxe', 1)
+        }
+    )
 }
 
-// =========================================================
-// --- ORQUESTADOR DE PROGRESIÓN ---
-// =========================================================
+async function phaseIron(bot, mcData) {
+    // Task: Get iron
+    await runSmartTask(
+        bot, 'Mine Iron',
+        async () => hasItem(bot, mcData, 'raw_iron', 3) || hasItem(bot, mcData, 'iron_ingot', 3),
+        async () => {
+            // Ensure stone pickaxe (required tier for iron)
+            await ensureEquipped(bot, mcData, 'stone_pickaxe', async () => {
+                // If we need to recover the stone pickaxe, we need cobblestone
+                // If we don't have cobblestone, go mine stone
+                if (!hasItem(bot, mcData, 'cobblestone', 3)) {
+                    console.log('[REPLAN] I need stone for the new pickaxe.')
+                    await ensureEquipped(bot, mcData, 'wooden_pickaxe') // Recursion: ensure wooden one to mine stone
+                    await mineBlock(bot, mcData, 'stone', 3)
+                }
+            })
+            // Mine iron
+            await mineBlock(bot, mcData, 'iron_ore', 3)
+        }
+    )
+
+    // Task: Get coal (for furnace)
+    await runSmartTask(
+        bot, 'Mine Coal',
+        async () => hasItem(bot, mcData, 'coal', 3),
+        async () => {
+            await ensureEquipped(bot, mcData, 'stone_pickaxe') // Use the stone one, it's faster
+            await mineBlock(bot, mcData, 'coal_ore', 3)
+        }
+    )
+    
+    // Task: Furnace and smelting
+    await runSmartTask(
+        bot, 'Smelt Iron',
+        async () => hasItem(bot, mcData, 'iron_ingot', 3),
+        async () => {
+            // 1. Ensure furnace
+            if (!hasItem(bot, mcData, 'furnace') && !bot.findBlock({ matching: mcData.blocksByName.furnace.id, maxDistance: 16 })) {
+                await ensureCraftingTable(bot, mcData)
+                await craftItem(bot, mcData, 'furnace', 1)
+                await placeBlockFull(bot, mcData, 'furnace')
+            }
+            // 2. Smelt
+            await smeltItem(bot, mcData, 'iron_ingot', 3)
+        }
+    )
+
+    // Final task: Iron pickaxe
+    await runSmartTask(
+        bot, 'Craft Iron Pickaxe',
+        async () => hasItem(bot, mcData, 'iron_pickaxe'),
+        async () => {
+            await ensureCraftingTable(bot, mcData)
+            if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
+            await craftItem(bot, mcData, 'iron_pickaxe', 1)
+        }
+    )
+}
+
+/**
+ * =========================================================
+ * MAIN ORCHESTRATOR
+ * =========================================================
+ */
 
 async function runFullProgression(bot, mcData, metricsCollector = null) {
-    const has = createHas(bot, mcData)
-    const guards = createPhaseGuards(bot, mcData, has)
-
-    await woodPhase(bot, mcData, has, guards, metricsCollector)
-    // furnacePhase se llama desde ironPhase cuando ya tenemos materiales
-    await ironPhase(bot, mcData, has, guards, metricsCollector)
-
-    bot.chat('¡Misión Completa: Tengo el Pico de Hierro!')
+    bot.chat('Starting Progression with Replanning System v2')
+    
+    try {
+        await phaseWood(bot, mcData)
+        bot.chat('--- Wood Phase Complete ---')
+        
+        await phaseStone(bot, mcData)
+        bot.chat('--- Stone Phase Complete ---')
+        
+        await phaseIron(bot, mcData)
+        bot.chat('✓ Mission Complete! I have iron tools.')
+        
+    } catch (error) {
+        bot.chat(`[FATAL] Progression stopped: ${error.message}`)
+        console.error(error)
+    }
 }
 
 export {
