@@ -1,4 +1,4 @@
-import { getBiomeName } from '../utils.js'
+import { getBiomeName } from './helpers.js'
 import { mineBlock } from './mining.js';
 
 // Some other types may be needed, for now we use these

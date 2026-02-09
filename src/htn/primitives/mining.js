@@ -1,12 +1,7 @@
-import {
-    findNearestBlock,
-    mineBlock,
-    hasItem,
-    exploreRandom,
-    moveToBlock,
-} from '../primitive_task.js'
+import { findNearestBlock, hasItem } from './inventory.js'
+import { exploreRandom, moveToBlock } from './movement.js'
 
-import { getItemNameFromBlock } from '../utils.js'
+import { getItemNameFromBlock } from './helpers.js'
 
 /**
  * Mines the specified block until the desired count of the corresponding item is obtained.
@@ -42,7 +37,8 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
 
         // Increase search radius with each attempt to find more ores if they are not found nearby
         const currentRadius = searchRadius + (attempts * 16)
-        let ore = findNearestBlock(bot, mcData, itemName, currentRadius)
+        // Search for the actual block in the world (e.g., 'stone'), not the item it drops (e.g., 'cobblestone')
+        let ore = findNearestBlock(bot, mcData, blockName, currentRadius)
         
         if (ore) {
             lastOreLocation = ore.position
@@ -90,7 +86,8 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
 }
 
 async function mine(bot, block) {
-    if (!block) throw new Error(`[ERROR] ${bot.name} No block provided for mining.`)
+    const botLabel = bot?.name || bot?.username || 'bot'
+    if (!block) throw new Error(`[ERROR] ${botLabel} No block provided for mining.`)
     
     try {
         await moveToBlock(bot, block, 4)
@@ -102,7 +99,7 @@ async function mine(bot, block) {
         
         await bot.collectBlock.collect(currentBlock)
     } catch (e) {
-        console.error(`[ERROR] [${bot.name}] Failed to mine: ${e.message}`)
+        console.error(`[ERROR] [${botLabel}] Failed to mine: ${e.message}`)
         throw e
     }
 }
