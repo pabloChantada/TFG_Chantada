@@ -8,14 +8,16 @@ const { goals } = pkg
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Block} block - The target block to move towards.
  * @param {number} range - The distance within which the bot should be to consider it has arrived (default is 3).
- * @param {number} timeout - Maximum time to attempt movement in ms (default 15000ms).
+ * @param {number|null} timeout - Maximum time to attempt movement in ms (null = auto by distance).
  * @returns {Promise<void>}
  */
-async function moveToBlock(bot, block, range = 3, timeout = 15000) {
+async function moveToBlock(bot, block, range = 3, timeout = null) {
     if (!block) return
     
     const dist = bot.entity.position.distanceTo(block.position)
     if (dist <= range) return // Already in range
+
+    const effectiveTimeout = timeout ?? Math.min(60000, Math.max(15000, Math.ceil(dist * 1000)))
     
     const startTime = Date.now()
     const startPos = bot.entity.position.clone()
@@ -24,7 +26,7 @@ async function moveToBlock(bot, block, range = 3, timeout = 15000) {
         // Create a promise that rejects on timeout
         const movePromise = bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, range))
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Movement timeout')), timeout)
+            setTimeout(() => reject(new Error('Movement timeout')), effectiveTimeout)
         )
         
         await Promise.race([movePromise, timeoutPromise])

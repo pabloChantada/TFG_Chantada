@@ -1,6 +1,6 @@
 const SMELT_INPUTS = {
     'coal': 'coal_ore',
-    'iron_ingot': 'iron_ore'
+    'iron_ingot': 'raw_iron'
 }
 
 const DROPS = {

@@ -39,6 +39,10 @@ const logToPlank = {
     'crimson_stem': 'crimson_planks'
 };
 
+const plankToLog = Object.fromEntries(
+    Object.entries(logToPlank).map(([log, plank]) => [plank, log])
+)
+
 /**
  * =========================================================
  * ============== WOOD FUNCTIONS ===========================
@@ -103,6 +107,29 @@ async function obtainPlankType(bot, mcData, woodType, metricsCollector = null) {
 }
 
 /**
+ * Determines wood type from inventory logs or planks.
+ * @param {Bot} bot - The mineflayer bot instance.
+ * @returns {string|null} - The wood type to use, or null if none found.
+ */
+function getWoodTypeFromInventory(bot) {
+    const items = bot?.inventory?.items?.() || []
+
+    // Prefer logs/stems/hyphae/wood in inventory
+    const logItem = items.find((item) => WOOD_SUFFIXES.some((suffix) => item.name.endsWith(suffix)))
+    if (logItem && logToPlank[logItem.name]) {
+        return logItem.name
+    }
+
+    // Fallback: derive wood type from planks in inventory
+    const plankItem = items.find((item) => plankToLog[item.name])
+    if (plankItem) {
+        return plankToLog[plankItem.name]
+    }
+
+    return null
+}
+
+/**
  * Chops the specified amount of logs of the given wood type.
  * Detects biome, obtains correct wood type, and collects logs.
  * @param {Bot} bot - The mineflayer bot instance.
@@ -121,5 +148,6 @@ async function chop(bot, mcData, logs = 4, metricsCollector = null) {
 export {
     chop,
     obtainWoodType,
-    obtainPlankType
+    obtainPlankType,
+    getWoodTypeFromInventory
 }

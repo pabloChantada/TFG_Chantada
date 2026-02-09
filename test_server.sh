@@ -3,7 +3,7 @@ set -euo pipefail
 
 PORT="8080"
 NO_UI="true"
-CLEAN_METRICS="true"
+CLEAN_METRICS="false"
 
 print_usage() {
     cat <<'EOF'
@@ -12,7 +12,7 @@ Usage: ./test_server.sh [options]
 Options:
   --port N             Server port (default: 8080)
   --ui                 Enable UI auto-open (default: disabled)
-  --no-clean-metrics   Do not clean metrics on startup
+  --clean-metrics      Clear metrics on startup (default: enabled)
   --help               Show this help
 
 Examples:
@@ -31,8 +31,8 @@ while [[ $# -gt 0 ]]; do
             NO_UI="false"
             shift 1
             ;;
-        --no-clean-metrics)
-            CLEAN_METRICS="false"
+        --clean-metrics)
+            CLEAN_METRICS="true"
             shift 1
             ;;
         --help)

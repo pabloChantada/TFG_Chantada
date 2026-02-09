@@ -40,7 +40,37 @@ async function placeBlockFull(bot, mcData, blockName) {
         throw new Error(`[ERROR] ${bot.username} No ground block found to place ${blockName}`)
     }
 
-    await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
+    try {
+        await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
+    } catch (e) {
+        const expectedBlockId = mcData.blocksByName[blockName]?.id
+        // First check the expected position
+        const placedBlock = bot.blockAt(newBlockPos)
+        if (expectedBlockId && placedBlock?.type === expectedBlockId) {
+            console.warn(`[placeBlock] ${bot.username} Placement event timeout, but block exists at expected pos. Saving to memory.`)
+        } else {
+            // Scan nearby blocks — the block may have been placed at a slightly different position
+            let found = false
+            if (expectedBlockId) {
+                const searchRadius = 3
+                const botPos = bot.entity.position.floored()
+                for (let dx = -searchRadius; dx <= searchRadius && !found; dx++) {
+                    for (let dy = -1; dy <= 2 && !found; dy++) {
+                        for (let dz = -searchRadius; dz <= searchRadius && !found; dz++) {
+                            const checkPos = botPos.offset(dx, dy, dz)
+                            const checkBlock = bot.blockAt(checkPos)
+                            if (checkBlock?.type === expectedBlockId) {
+                                console.warn(`[placeBlock] ${bot.username} Placement event timeout, but block found at ${checkPos}. Saving to memory.`)
+                                newBlockPos = checkPos
+                                found = true
+                            }
+                        }
+                    }
+                }
+            }
+            if (!found) throw e
+        }
+    }
 
     console.log(`[placeBlock] ${bot.username} Saving ${blockName} position to memory...`)
     console.log(`[placeBlock] ${bot.username} Position: ${JSON.stringify(newBlockPos)}`)
