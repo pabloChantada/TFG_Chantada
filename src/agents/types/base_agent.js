@@ -73,11 +73,11 @@
  */
 
 
-import { initBot } from `../../llm/src/utils/mcdata.js`;
-import { addBrowserViewer } from `../../llm/src/agent/vision/browser_viewer.js`;
-import { serverProxy } from `../../llm/src/agent/mindserver_proxy.js`;
-import fs from `fs`;
-import path from `path`;
+import { initBot } from '../../llm/src/utils/mcdata.js';
+import { addBrowserViewer } from '../../llm/src/agent/vision/browser_viewer.js';
+import { serverProxy } from '../../llm/src/agent/mindserver_proxy.js';
+import fs from 'fs';
+import path from 'path';
 
 
 export class BaseAgent {

@@ -1,6 +1,44 @@
 import fs from 'fs'
+import path from 'path'
 import Vec3 from 'vec3'
 import { getBlockId } from './inventory.js'
+
+/**
+ * Gets the memory file path for a bot
+ * @param {Bot} bot - The mineflayer bot instance
+ * @returns {string} - The path to the memory file
+ */
+function getMemoryPath(bot) {
+    return path.join('src', 'agents', 'memories', `${bot.username}_memory.json`)
+}
+
+/**
+ * Saves a structure position to bot memory
+ * @param {Bot} bot - The mineflayer bot instance
+ * @param {string} structureName - Name of the structure
+ * @param {Vec3} position - Position to save
+ */
+function saveStructureToMemory(bot, structureName, position) {
+    const filePath = getMemoryPath(bot)
+    const dir = path.dirname(filePath)
+    
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+    }
+    
+    let memoryData = {}
+    if (fs.existsSync(filePath)) {
+        try {
+            memoryData = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+        } catch (_e) {
+            memoryData = {}
+        }
+    }
+    
+    memoryData[structureName] = { x: position.x, y: position.y, z: position.z }
+    fs.writeFileSync(filePath, JSON.stringify(memoryData, null, 2))
+    console.log(`[saveStructureToMemory] Saved ${structureName} at ${position}`)
+}
 
 /**
  * Obtains a stored structure (crafting_table, furnace, etc) from bot memory
@@ -46,7 +84,15 @@ function getStructure(bot, mcData, structureName, throwOnMissing = false) {
         return block
     }
     
-    return throwOnMissing ? null : null
+    if (throwOnMissing) {
+        throw {
+            type: `${structureName.toUpperCase()}_NOT_FOUND`,
+            message: `${structureName} not found or invalid in memory`,
+            reason: `${structureName}_missing`
+        }
+    }
+
+    return null
 }
 
 /**
@@ -61,17 +107,17 @@ function getCraftingTable(bot, mcData) {
 }
 
 /**
- * Gets the furnace block from memory, returns null if not found or invalid.
+ * Gets the furnace block from memory.
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
- * @return {Block|null} - The furnace block.
- * @throws {Error} - If the furnace is not found or invalid. 
+ * @return {Block|null} - The furnace block, or null if not in memory.
  */
 function getFurnace(bot, mcData) {
-    return getStructure(bot, mcData, 'furnace', false) 
+    return getStructure(bot, mcData, 'furnace', false)
 }
 
 export {
     getCraftingTable,
-    getFurnace
+    getFurnace,
+    saveStructureToMemory
 }

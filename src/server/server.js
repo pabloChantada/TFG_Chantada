@@ -12,7 +12,6 @@
 import * as EvalServer from './mindcraft.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { HTNAgent } from '../agents/htn_agent.js';
 
 const args = yargs(hideBin(process.argv))
     .option('port', {
@@ -20,11 +19,6 @@ const args = yargs(hideBin(process.argv))
         type: 'number',
         description: 'Server port',
         default: 8080
-    })
-    .option('host-public', {
-        type: 'boolean',
-        description: 'Make server accessible from external IPs (0.0.0.0)',
-        default: false
     })
     .option('no-ui', {
         type: 'boolean',
@@ -55,34 +49,17 @@ const args = yargs(hideBin(process.argv))
         type: 'string',
         description: 'Comma-separated list of agent names (must match --agents count)'
     })
-    .option('minecraft-host', {
-        alias: 'mh',
-        type: 'string',
-        description: 'Minecraft server host',
-        default: '127.0.0.1'
-    })
     .option('minecraft-port', {
         alias: 'mp',
         type: 'number',
         description: 'Minecraft server port',
         default: 25565
     })
-    .option('minecraft-version', {
-        alias: 'mv',
-        type: 'string',
-        description: 'Minecraft version (or "auto")',
-        default: 'auto'
-    })
     .option('clean-metrics', {
         alias: 'cm',
         type: 'boolean',
         description: 'Clean metrics directory (excluding example_*.json/csv files)',
         default: false
-    })
-    .option('config', {
-        alias: 'c',
-        type: 'string',
-        description: 'Path to JSON config file with agent definitions'
     })
     .help()
     .alias('help', 'h')
@@ -92,110 +69,20 @@ const args = yargs(hideBin(process.argv))
     .example('node server.js --config agents.json', 'Launch server with agents from config file')
     .parse();
 
-const disableUi = args.noUi === true || args.ui === false;
-if (disableUi) {
-    process.env.MINDCRAFT_NO_UI = '1';
-    console.log('[INFO] UI auto-open disabled via --no-ui flag');
-}
+// Configure UI based on CLI arguments and environment variables
+const disableUi = configureUi(args);
 
-// Initialize server
+// Remove old memory files on startup to prevent interference with new agents
 console.log('[INFO] Starting Evaluation Server...');
-// Clean memory directory if it exists and is not empty
-const memoryPath = "src/agents/memories/";
-try {
-    const fs = await import('fs');
-    if (fs.existsSync(memoryPath)) {
-        const files = fs.readdirSync(memoryPath);
-        if (files.length > 0) {
-            console.log(`[INFO] Cleaning memory directory: ${memoryPath}`);
-            for (const file of files) {
-                const filePath = `${memoryPath}/${file}`;
-                if (fs.statSync(filePath).isFile()) {
-                    fs.unlinkSync(filePath);
-                }
-            }
-            console.log(`[INFO] Removed ${files.length} file(s) from memory directory`);
-        }
-    } else {
-        // Create directory if it doesn't exist
-        fs.mkdirSync(memoryPath, { recursive: true });
-        console.log(`[INFO] Created memory directory: ${memoryPath}`);
-    }
-} catch (error) {
-    console.error('[ERROR] Failed to clean memory directory:', error.message);
-}
+await cleanMemoryDirectory();
+await cleanMetricsDirectory(args.cleanMetrics);
 
-// Clean metrics directory if requested
-if (args.cleanMetrics) {
-    const metricsPath = "src/metrics/agent_metrics/";
-    try {
-        const fs = await import('fs');
-        if (fs.existsSync(metricsPath)) {
-            const files = fs.readdirSync(metricsPath);
-            let deletedCount = 0;
-            
-            for (const file of files) {
-                // Skip example files
-                if (file.startsWith('example_')) {
-                    continue;
-                }
-                
-                const filePath = `${metricsPath}/${file}`;
-                if (fs.statSync(filePath).isFile()) {
-                    fs.unlinkSync(filePath);
-                    deletedCount++;
-                }
-            }
-            
-            if (deletedCount > 0) {
-                console.log(`[INFO] Removed ${deletedCount} file(s) from metrics directory`);
-            }
-        } else {
-            // Create directory if it doesn't exist
-            fs.mkdirSync(metricsPath, { recursive: true });
-            console.log(`[INFO] Created metrics directory: ${metricsPath}`);
-        }
-    } catch (error) {
-        console.error('[ERROR] Failed to clean metrics directory:', error.message);
-    }
-}
-
+// Start the MindCraft server and create agents based on CLI arguments
 await EvalServer.init(args.hostPublic, args.port, !disableUi);
+await createAgentsFromArgs(args);
 
-// Create agents from CLI arguments
-if (args.agent && args.name) {
-    console.log(`[INFO] Creating ${args.agent} agent: ${args.name}`);
-    await createAgentFromCLI(args.agent, args.name, args);
-}
-else if (args.agents && args.names) {
-    const agentTypes = args.agents.split(',').map(s => s.trim());
-    const agentNames = args.names.split(',').map(s => s.trim());
-    
-    if (agentTypes.length !== agentNames.length) {
-        console.error('Error: Number of agent types must match number of names');
-        process.exit(1);
-    }
-    
-    for (let i = 0; i < agentTypes.length; i++) {
-        console.log(`Creating ${agentTypes[i]} agent: ${agentNames[i]}`);
-        await createAgentFromCLI(agentTypes[i], agentNames[i], args);
-        // Small delay between agents to avoid race conditions
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-}
-else if (args.config) {
-    console.log(`Loading agents from config: ${args.config}`);
-    await createAgentsFromConfig(args.config, args);
-}
-
-console.log(`\n[INFO] Evaluation Server running on http://localhost:${args.port}`);
-console.log('Press Ctrl+C to shutdown\n');
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('\n[INFO] Shutting down...');
-    EvalServer.shutdown();
-});
+logServerReady(args.port);
+registerShutdownHandler();
 
 /**
  * Build a standardized settings object for agent creation
@@ -228,6 +115,9 @@ function buildAgentSettings(agentName, agentType, options = {}) {
 
 /**
  * Create a single agent from CLI arguments
+ * @param {string} agentType - The type of agent to create (htn, rl, custom)
+ * @param {string} agentName - The name of the agent to create
+ * @param {Object} cliArgs - The original CLI arguments for additional configuration
  */
 async function createAgentFromCLI(agentType, agentName, cliArgs) {
     const settings = buildAgentSettings(agentName, agentType, {
@@ -240,15 +130,152 @@ async function createAgentFromCLI(agentType, agentName, cliArgs) {
     });
 
     try {
-        if (agentType === 'htn') {
-            const agent = new HTNAgent(agentName);
-            const viewerPort = 3000 + (parseInt(cliArgs.name?.split(/\D+/).pop()) || 0);
-            await agent.start(settings, viewerPort);
-            console.log(`[INFO] Agent ${agentName} created successfully`);
-        } else {
-            console.error(`[ERROR] Agent type ${agentType} not yet supported in server.js. Use add_agent.js instead.`);
+        const result = await EvalServer.createAgent(settings);
+        if (!result.success) {
+            console.error(`[ERROR] Failed to create agent ${agentName}: ${result.error}`);
+            return;
         }
+        console.log(`[INFO] Agent ${agentName} created successfully`);
     } catch (error) {
         console.error(`[ERROR] Failed to create agent ${agentName}: ${error.message}`);
     }
+}
+
+
+/**
+ * Creates a new agent with the given settings and starts it.
+ * @param {Object} settings - The settings for the agent, including profile information and connection details.
+ * @returns {Object} An object indicating success or failure, and any error message if applicable.
+ */
+function configureUi(cliArgs) {
+    const disableUi = cliArgs.noUi === true || cliArgs.ui === false;
+    if (disableUi) {
+        process.env.MINDCRAFT_NO_UI = '1';
+        console.log('[INFO] UI auto-open disabled via --no-ui flag');
+    }
+    return disableUi;
+}
+
+/**
+ * Cleans the memory directory by removing all files to prevent interference with new agents. If the directory does not exist, it is created.
+ */
+async function cleanMemoryDirectory(shouldClean = true) {
+    if (!shouldClean) {
+        return;
+    }
+    const memoryPath = 'src/agents/memories/';
+    try {
+        const fs = await import('fs');
+        if (fs.existsSync(memoryPath)) {
+            const files = fs.readdirSync(memoryPath);
+            if (files.length > 0) {
+                console.log(`[INFO] Cleaning memory directory: ${memoryPath}`);
+                for (const file of files) {
+                    const filePath = `${memoryPath}/${file}`;
+                    if (fs.statSync(filePath).isFile()) {
+                        fs.unlinkSync(filePath);
+                    }
+                }
+                console.log(`[INFO] Removed ${files.length} file(s) from memory directory`);
+            }
+            return;
+        }
+        fs.mkdirSync(memoryPath, { recursive: true });
+        console.log(`[INFO] Created memory directory: ${memoryPath}`);
+    } catch (error) {
+        console.error('[ERROR] Failed to clean memory directory:', error.message);
+    }
+}
+
+/**
+ * Cleans the metrics directory by removing all files except those starting with "example_". If the directory does not exist, it is created.
+ * @param {boolean} shouldClean - Whether to perform the cleaning operation. If false, the function will return without doing anything.
+ */
+async function cleanMetricsDirectory(shouldClean) {
+    if (!shouldClean) {
+        return;
+    }
+
+    const metricsPath = 'src/metrics/agent_metrics/';
+    try {
+        const fs = await import('fs');
+        if (fs.existsSync(metricsPath)) {
+            const files = fs.readdirSync(metricsPath);
+            let deletedCount = 0;
+
+            for (const file of files) {
+                if (file.startsWith('example_')) {
+                    continue;
+                }
+
+                const filePath = `${metricsPath}/${file}`;
+                if (fs.statSync(filePath).isFile()) {
+                    fs.unlinkSync(filePath);
+                    deletedCount++;
+                }
+            }
+
+            if (deletedCount > 0) {
+                console.log(`[INFO] Removed ${deletedCount} file(s) from metrics directory`);
+            }
+            return;
+        }
+        fs.mkdirSync(metricsPath, { recursive: true });
+        console.log(`[INFO] Created metrics directory: ${metricsPath}`);
+    } catch (error) {
+        console.error('[ERROR] Failed to clean metrics directory:', error.message);
+    }
+}
+
+/**
+ * Creates agents based on CLI arguments. Supports creating a single agent with --agent and --name, multiple agents with --agents and --names, or loading agents from a config file with --config.
+ * @param {Object} cliArgs - The parsed CLI arguments from yargs.
+ * @returns {Promise<void>} A promise that resolves when all agents have been created.
+ */
+async function createAgentsFromArgs(cliArgs) {
+    if (cliArgs.agent && cliArgs.name) {
+        console.log(`[INFO] Creating ${cliArgs.agent} agent: ${cliArgs.name}`);
+        await createAgentFromCLI(cliArgs.agent, cliArgs.name, cliArgs);
+        return;
+    }
+
+    if (cliArgs.agents && cliArgs.names) {
+        const agentTypes = cliArgs.agents.split(',').map(s => s.trim());
+        const agentNames = cliArgs.names.split(',').map(s => s.trim());
+
+        if (agentTypes.length !== agentNames.length) {
+            console.error('Error: Number of agent types must match number of names');
+            process.exit(1);
+        }
+
+        for (let i = 0; i < agentTypes.length; i++) {
+            console.log(`Creating ${agentTypes[i]} agent: ${agentNames[i]}`);
+            await createAgentFromCLI(agentTypes[i], agentNames[i], cliArgs);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        return;
+    }
+
+    if (cliArgs.config) {
+        console.log(`Loading agents from config: ${cliArgs.config}`);
+        await createAgentsFromConfig(cliArgs.config, cliArgs);
+    }
+}
+
+/**
+ * Logs the server URL and shutdown instructions to the console when the server is ready.
+ */
+function logServerReady(port) {
+    console.log(`\n[INFO] Evaluation Server running on http://localhost:${port}`);
+    console.log('Press Ctrl+C to shutdown\n');
+}
+
+/**
+ * Registers a shutdown handler to gracefully shut down the server when the process receives a SIGINT signal (e.g., when the user presses Ctrl+C).
+ */
+function registerShutdownHandler() {
+    process.on('SIGINT', () => {
+        console.log('\n[INFO] Shutting down...');
+        EvalServer.shutdown();
+    });
 }

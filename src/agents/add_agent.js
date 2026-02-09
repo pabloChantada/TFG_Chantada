@@ -9,9 +9,10 @@
  *   spawned with settings from mindserver
  */
 
-import { serverProxy } from `../llm/src/agent/mindserver_proxy.js`;
-import yargs from `yargs`;
-import { hideBin } from `yargs/helpers`;
+import { serverProxy } from '../llm/src/agent/mindserver_proxy.js';
+import { setSettings } from '../llm/src/agent/settings.js';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 (async () => {
     try {
@@ -74,28 +75,16 @@ import { hideBin } from `yargs/helpers`;
         const agentType = args.type;
         const serverPort = args.port;
         const agentIndex = args.count;
+        const viewerPort = 3000 + agentIndex;
         
         console.log(`[${agentName}] Connecting to MindServer on port ${serverPort}...`);
-        await serverProxy.connect(agentName, serverPort);
+        await serverProxy.connect(agentName, serverPort, { skipSettings: true, allowMissingSettings: true });
         
         // Request settings from server (if running via AgentProcess)
         // Otherwise, build settings from CLI args
         let settings;
         try {
-            settings = await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error(`Timeout waiting for settings`));
-                }, 2000);
-                
-                serverProxy.socket.emit(`get-settings`, agentName, (response) => {
-                    clearTimeout(timeout);
-                    if (response.error) {
-                        reject(new Error(response.error));
-                    } else {
-                        resolve(response.settings);
-                    }
-                });
-            });
+            settings = await requestSettingsFromServer(agentName);
         } catch (e) {
             // Server not responding, build settings from CLI args
             console.log(`[${agentName}] Building settings from CLI arguments...`);
@@ -105,7 +94,11 @@ import { hideBin } from `yargs/helpers`;
                 metricsPath: args[`metrics-path`],
                 initMessage: args[`init-message`]
             });
+            await registerAgentOnServer(agentName, settings, viewerPort);
         }
+
+        setSettings(settings);
+        serverProxy.getSocket().emit('connect-agent-process', agentName);
 
         const finalAgentType = settings.agent_type || settings.profile?.agent_type || agentType;
         console.log(`[${agentName}] Loading ${finalAgentType} agent...`);
@@ -127,7 +120,6 @@ import { hideBin } from `yargs/helpers`;
         const agent = new AgentClass(agentName);
         serverProxy.setAgent(agent);
         
-        const viewerPort = 3000 + agentIndex;
         const loadMemory = args[`load-memory`] || settings.load_memory || false;
         const initMessage = args[`init-message`] || settings.init_message || null;
         
@@ -145,6 +137,35 @@ import { hideBin } from `yargs/helpers`;
         process.exit(1);
     }
 })();
+
+function requestSettingsFromServer(agentName) {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for settings'));
+        }, 2000);
+
+        serverProxy.getSocket().emit('get-settings', agentName, (response) => {
+            clearTimeout(timeout);
+            if (response?.error) {
+                reject(new Error(response.error));
+                return;
+            }
+            resolve(response.settings);
+        });
+    });
+}
+
+function registerAgentOnServer(agentName, settings, viewerPort) {
+    return new Promise((resolve, reject) => {
+        serverProxy.getSocket().emit('register-agent', settings, viewerPort, (response) => {
+            if (!response?.success) {
+                reject(new Error(response?.error || `Failed to register ${agentName}`));
+                return;
+            }
+            resolve();
+        });
+    });
+}
 
 /**
  * Build a standardized settings object for agent creation

@@ -1,4 +1,4 @@
-// Imports for Primitives (Low Level)
+// TODO: refactor
 import { mineBlock } from './primitives/mining.js'
 import { exploreRandom, moveToBlock } from './primitives/movement.js'
 import { hasItem, getItemId } from './primitives/inventory.js'

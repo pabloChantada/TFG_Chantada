@@ -43,7 +43,6 @@ export class MetricsCollector {
             //   success: bool
             // }
             world_model: [], 
-            actions: [], // Name of the action and timestamp
             action_counts: {}, // Count of each action performed
             errors: []
         };
@@ -144,9 +143,6 @@ export class MetricsCollector {
             duration: (new Date() - new Date(currentActionData.startTime)) / 1000
         };
 
-        // Push to the actions list in the json 
-        this.metrics.actions.push(completedAction);
-        
         const screenshotPath = await this._queueScreenshotCapture();
 
         // Record action completion to world_model
@@ -211,7 +207,7 @@ export class MetricsCollector {
             }
         } else {
             // Default metrics path with timestamp and agent name
-            this.exportPath = 'src/metrics/agent_metrics/metrics_${this.agentName}_${Date.now()}.json';
+            this.exportPath = `src/metrics/agent_metrics/metrics_${this.agentName}_${Date.now()}.json`;
         }
 
         this.metrics.task = task || 'Default task';
@@ -220,10 +216,10 @@ export class MetricsCollector {
         this.captureScreenshots = Boolean(captureScreenshots);
         this.viewerPort = viewerPort;
         if (this.captureScreenshots) {
-            this.screenshotsDir = 'src/metrics/agent_metrics/${this.agentName}_screenshots/';
+            this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}_screenshots/`;
         }
         
-        console.log('[${this.agentName}] Metrics initialized - Export path: ${this.exportPath}');
+        console.log(`[${this.agentName}] Metrics initialized - Export path: ${this.exportPath}`);
     }
 
     /**
@@ -325,7 +321,7 @@ export class MetricsCollector {
             });
         }, intervalMs);
 
-        console.log('[${this.agentName}] World tracking started at ${samplingRate} samples/second');
+        console.log(`[${this.agentName}] World tracking started at ${samplingRate} samples/second`);
     }
 
     /**
@@ -335,7 +331,7 @@ export class MetricsCollector {
         if (this.trackingInterval) {
             clearInterval(this.trackingInterval);
             this.trackingInterval = null;
-            console.log('[${this.agentName}] World tracking stopped');
+            console.log(`[${this.agentName}] World tracking stopped`);
         }
 
         if (this.browser) {
@@ -372,7 +368,7 @@ export class MetricsCollector {
         this.browser = await puppeteer.launch({ headless: 'new' });
         this.page = await this.browser.newPage();
         await this.page.setViewport({ width: this.screenshotWidth, height: this.screenshotHeight });
-        await this.page.goto('http://localhost:${this.viewerPort}', { waitUntil: 'networkidle0' });
+        await this.page.goto(`http://localhost:${this.viewerPort}`, { waitUntil: 'networkidle0' });
         await this.page.waitForSelector('canvas');
     }
 
@@ -389,13 +385,13 @@ export class MetricsCollector {
             if (!canvas) return null;
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = 'worldmodel_${timestamp}.${this.screenshotFormat}';
+            const filename = `worldmodel_${timestamp}.${this.screenshotFormat}`;
             const filePath = path.join(this.screenshotsDir, filename);
 
             await canvas.screenshot({ path: filePath, type: this.screenshotFormat });
             return filePath;
         } catch (error) {
-            console.warn('[${this.agentName}] Screenshot capture failed: ${error.message}');
+            console.warn(`[${this.agentName}] Screenshot capture failed: ${error.message}`);
             return null;
         }
     }
@@ -431,7 +427,7 @@ export class MetricsCollector {
      */
     async export(bot = null) {
         if (!this.exportPath) {
-            console.log('[${this.agentName}] Metrics export disabled (no path specified)');
+            console.log(`[${this.agentName}] Metrics export disabled (no path specified)`);
             return;
         }
 
@@ -440,7 +436,7 @@ export class MetricsCollector {
             const dir = path.dirname(this.exportPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
-                console.log('[${this.agentName}] Created metrics directory: ${dir}');
+                console.log(`[${this.agentName}] Created metrics directory: ${dir}`);
             }
 
             // Add th commit version as an ID of the metric
@@ -452,7 +448,7 @@ export class MetricsCollector {
             await this.exportJSON();
 
         } catch (error) {
-            console.error('[${this.agentName}] Failed to export metrics:', error.message);
+            console.error(`[${this.agentName}] Failed to export metrics:`, error.message);
         }
     }
 
@@ -469,7 +465,7 @@ export class MetricsCollector {
             const refContent = fs.readFileSync(refPath, 'utf-8');
             this.metrics.version = refContent.toString().trim();
         } catch (e) {
-            console.warn('[${this.agentName}] No se pudo obtener la versión de Git: ${e.message}');
+            console.warn(`[${this.agentName}] No se pudo obtener la versión de Git: ${e.message}`);
             this.metrics.version = bot.version || 'unknown';
         }
 

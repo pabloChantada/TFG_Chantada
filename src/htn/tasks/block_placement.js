@@ -35,7 +35,12 @@ async function placeBlockFull(bot, mcData, blockName) {
         groundBlockPos = newBlockPos.offset(0, -1, 0)
     }
 
-    await bot.placeBlock(groundBlockPos, new Vec3(0, 1, 0))
+    const groundBlock = bot.blockAt(groundBlockPos)
+    if (!groundBlock) {
+        throw new Error(`[ERROR] ${bot.username} No ground block found to place ${blockName}`)
+    }
+
+    await bot.placeBlock(groundBlock, new Vec3(0, 1, 0))
 
     console.log(`[placeBlock] ${bot.username} Saving ${blockName} position to memory...`)
     console.log(`[placeBlock] ${bot.username} Position: ${JSON.stringify(newBlockPos)}`)

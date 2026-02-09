@@ -1,9 +1,9 @@
 
 
-import { BaseAgent } from `./base_agent.js`;
-import { serverProxy } from `../../llm/src/agent/mindserver_proxy.js`;
-import { startHTN } from `../../htn/main_htn.js`;
-import { MetricsCollector } from `../../metrics/metrics_collector.js`;
+import { BaseAgent } from './base_agent.js';
+import { serverProxy } from '../../llm/src/agent/mindserver_proxy.js';
+import { startHTN } from '../../htn/main_htn.js';
+import { MetricsCollector } from '../../metrics/metrics_collector.js';
 
 export class HTNAgent extends BaseAgent {
     constructor(agentName) {

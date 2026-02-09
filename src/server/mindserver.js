@@ -100,6 +100,20 @@ export function createMindServer(host_public = false, port = 8080) {
             }
         });
 
+        socket.on('register-agent', (settings, viewerPort, callback) => {
+            if (!settings?.profile?.name) {
+                callback({ success: false, error: 'Agent name is required in profile' });
+                return;
+            }
+            if (settings.profile.name in agent_connections) {
+                callback({ success: false, error: 'Agent already exists' });
+                return;
+            }
+            registerAgent(settings, viewerPort);
+            callback({ success: true, error: null });
+            agentsStatusUpdate();
+        });
+
         socket.on('get-settings', (agentName, callback) => {
             if (agent_connections[agentName]) {
                 callback({ settings: agent_connections[agentName].settings });
