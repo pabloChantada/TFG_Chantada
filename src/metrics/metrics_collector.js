@@ -22,6 +22,7 @@ export class MetricsCollector {
         this.browser = null;
         this.page = null;
         this.screenshotQueue = Promise.resolve(null);
+        this.actionQueue = Promise.resolve(null);
         
         this.metrics = {
             version: null,
@@ -129,35 +130,37 @@ export class MetricsCollector {
      */
     async trackActionEnd(success, bot) {
         if (!this.currentAction) return;
-        
-        // Capture current action immediately 
+
         const currentActionData = this.currentAction;
-        // Reset the current action
         this.currentAction = null;
-        
-        const completedAction = {
-            name: currentActionData.name,
-            success,
-            startTime: currentActionData.startTime,
-            endTime: new Date().toISOString(),
-            duration: (new Date() - new Date(currentActionData.startTime)) / 1000
-        };
 
-        const screenshotPath = await this._queueScreenshotCapture();
+        this.actionQueue = this.actionQueue.then(async () => {
+            const completedAction = {
+                name: currentActionData.name,
+                success,
+                startTime: currentActionData.startTime,
+                endTime: new Date().toISOString(),
+                duration: (new Date() - new Date(currentActionData.startTime)) / 1000
+            };
 
-        // Record action completion to world_model
-        this.metrics.world_model.push({
-            x: bot.entity.position.x,
-            y: bot.entity.position.y,
-            z: bot.entity.position.z,
-            action: completedAction,
-            timestamp: completedAction.endTime,
-            screenshot: screenshotPath
+            const screenshotPath = await this._queueScreenshotCapture();
+
+            // Record action completion to world_model
+            this.metrics.world_model.push({
+                x: bot.entity.position.x,
+                y: bot.entity.position.y,
+                z: bot.entity.position.z,
+                action: completedAction,
+                timestamp: completedAction.endTime,
+                screenshot: screenshotPath
+            });
+            
+            // Count occurrences of this action
+            this.metrics.action_counts[currentActionData.name] = 
+                (this.metrics.action_counts[currentActionData.name] || 0) + 1;
         });
-        
-        // Count occurrences of this action
-        this.metrics.action_counts[currentActionData.name] = 
-            (this.metrics.action_counts[currentActionData.name] || 0) + 1;
+
+        return this.actionQueue;
     }
 
     /**

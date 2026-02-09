@@ -30,10 +30,9 @@ src/agents/memories/*
 !src/agents/memories/*example*
 
 src/metrics/agent_metrics/*
-
+src/evaluation/README_VAE.md
 # Ignorar modelos
 vae_minecraft.pth
-vae_training_log.txt
 .github
 
 ################################
@@ -98,3 +97,4 @@ llm/tasks/construction_tasks/train_multiagent_construction_tasks.json
 llm/tasks/construction_tasks/test/**
 
 api_test/dataset/3/*
+src/evaluation/README_VAE.md

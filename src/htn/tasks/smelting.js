@@ -16,7 +16,19 @@ async function smeltItem(bot, mcData, itemName, amountNeeded = 1) {
     const item = mcData.itemsByName[itemName]
     if (!item) throw new Error(`[ERROR] ${bot.username} Invalid item: ${itemName}`)
 
-    const furnaceBlock = getFurnace(bot, mcData)
+    // Wait for furnace to be available in memory (it may be placed recently and not detected yet)
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    const waitForFurnace = async (retries = 6, delayMs = 500) => {
+        for (let i = 0; i < retries; i++) {
+            const found = getFurnace(bot, mcData)
+            if (found) return found
+            await sleep(delayMs)
+        }
+        return null
+    }
+
+    const furnaceBlock = await waitForFurnace()
     if (!furnaceBlock) throw new Error(`[ERROR] ${bot.username} Furnace not found in memory`)
     
     // Get the required input item for the desired smelting output
@@ -26,13 +38,22 @@ async function smeltItem(bot, mcData, itemName, amountNeeded = 1) {
     if (!inputItem) throw new Error(`[ERROR] ${bot.username} Input item missing: ${inputName}`)
 
     // Check for raw materials and fuel in inventory
-    const rawMaterial = bot.inventory.findInventoryItem(inputItem.id)
-    const fuel = bot.inventory.findInventoryItem(mcData.itemsByName.coal.id) // TODO: generalize fuels
+    let rawMaterial = bot.inventory.findInventoryItem(inputItem.id)
+    let fuel = bot.inventory.findInventoryItem(mcData.itemsByName.coal.id) // TODO: generalize fuels
+
+    // Wait a bit for inventory to update if materials were recently added
+    if (!rawMaterial || !fuel) {
+        for (let i = 0; i < 10 && (!rawMaterial || !fuel); i++) {
+            await sleep(300)
+            rawMaterial = bot.inventory.findInventoryItem(inputItem.id)
+            fuel = bot.inventory.findInventoryItem(mcData.itemsByName.coal.id)
+        }
+    }
 
     if (!rawMaterial || !fuel) throw new Error(`[ERROR] ${bot.username} Missing smelting materials or fuel`)
 
     // Move to furnace and open it
-    await moveToBlock(bot, furnaceBlock, 3)
+    await moveToBlock(bot, furnaceBlock, 3, 60000)
     const furnace = await bot.openFurnace(furnaceBlock)
     await furnace.putFuel(fuel.type, null, fuel.count)
     await furnace.putInput(rawMaterial.type, null, rawMaterial.count)

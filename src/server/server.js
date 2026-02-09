@@ -58,7 +58,7 @@ const args = yargs(hideBin(process.argv))
     .option('clean-metrics', {
         alias: 'cm',
         type: 'boolean',
-        description: 'Clean metrics directory (excluding example_*.json/csv files)',
+        description: 'Clean metrics directory',
         default: false
     })
     .help()
@@ -188,10 +188,10 @@ async function cleanMemoryDirectory(shouldClean = true) {
 }
 
 /**
- * Cleans the metrics directory by removing all files except those starting with "example_". If the directory does not exist, it is created.
+ * Cleans the metrics directory by removing all files and subdirectories. If the directory does not exist, it is created.
  * @param {boolean} shouldClean - Whether to perform the cleaning operation. If false, the function will return without doing anything.
  */
-async function cleanMetricsDirectory(shouldClean) {
+async function cleanMetricsDirectory(shouldClean = true) {
     if (!shouldClean) {
         return;
     }
@@ -200,28 +200,12 @@ async function cleanMetricsDirectory(shouldClean) {
     try {
         const fs = await import('fs');
         if (fs.existsSync(metricsPath)) {
-            const files = fs.readdirSync(metricsPath);
-            let deletedCount = 0;
-
-            for (const file of files) {
-                if (file.startsWith('example_')) {
-                    continue;
-                }
-
-                const filePath = `${metricsPath}/${file}`;
-                if (fs.statSync(filePath).isFile()) {
-                    fs.unlinkSync(filePath);
-                    deletedCount++;
-                }
-            }
-
-            if (deletedCount > 0) {
-                console.log(`[INFO] Removed ${deletedCount} file(s) from metrics directory`);
-            }
-            return;
+            // Remove entire directory recursively and recreate it
+            fs.rmSync(metricsPath, { recursive: true, force: true });
+            console.log(`[INFO] Removed metrics directory and all contents`);
         }
         fs.mkdirSync(metricsPath, { recursive: true });
-        console.log(`[INFO] Created metrics directory: ${metricsPath}`);
+        console.log(`[INFO] Created clean metrics directory: ${metricsPath}`);
     } catch (error) {
         console.error('[ERROR] Failed to clean metrics directory:', error.message);
     }

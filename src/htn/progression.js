@@ -5,7 +5,8 @@ import { hasItem, getItemId } from './primitives/inventory.js'
 import { 
     chop, 
     obtainWoodType, 
-    obtainPlankType 
+    obtainPlankType,
+    getWoodTypeFromInventory
 } from './primitives/wood.js'
 import { getCraftingTable } from './primitives/structures.js'
 // High-level tasks
@@ -32,7 +33,8 @@ function getBotLabel(bot) {
  * @param {Function} actionFn - Main action to execute
  * @param {Function} recoveryFn - (Optional) Action to execute if actionFn fails (e.g., craft new pickaxe)
  */
-async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = null) {
+async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = null, options = {}) {
+    const exploreOnFail = options.exploreOnFail !== false
     // Check if task is already done before starting
     if (await conditionFn()) {
         console.log(`[SKIP] [${getBotLabel(bot)}] ${taskName} completed. Skipping...`)
@@ -68,7 +70,13 @@ async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = n
             
             // If no recovery or it failed, increment attempts and explore to get unstuck
             attempts++
-            await exploreRandom(bot, 10) 
+            if (exploreOnFail) {
+                try {
+                    await exploreRandom(bot, 10)
+                } catch (exploreError) {
+                    console.warn(`[REPLAN] [${getBotLabel(bot)}] Explore failed: ${exploreError.message}`)
+                }
+            }
         }
     }
 
@@ -146,8 +154,9 @@ async function ensureWoodAndPlanks(bot, mcData, amountLogs = 3) {
  */
 
 async function phaseWood(bot, mcData) {
-    // Dinamicly determine wood type based on environment (e.g., oak, birch) and corresponding planks
-    const woodType = await obtainWoodType(bot, mcData)
+    // Determine wood type from inventory if possible; otherwise from environment
+    const inventoryWoodType = getWoodTypeFromInventory(bot)
+    const woodType = inventoryWoodType || await obtainWoodType(bot, mcData)
     const plankType = await obtainPlankType(bot, mcData, woodType)
 
     // Task 1: Collect wood
@@ -155,7 +164,7 @@ async function phaseWood(bot, mcData) {
     await runSmartTask(
         bot, 
         'Collect Wood',
-        async () => hasItem(bot, mcData, woodType, 5), // Condition
+        async () => hasItem(bot, mcData, woodType, 5) || hasItem(bot, mcData, plankType, 12), // Condition
         async () => chop(bot, mcData, 5)               // Action
     )
 
@@ -163,21 +172,29 @@ async function phaseWood(bot, mcData) {
     await runSmartTask(
         bot, 'Craft Planks',
         async () => hasItem(bot, mcData, plankType, 12),
-        async () => craftItem(bot, mcData, plankType, 4)
+        async () => craftItem(bot, mcData, plankType, 4),
+        null,
+        { exploreOnFail: false }
     )
 
     // Task 3: Build crafting table
     await runSmartTask(
         bot, 'Place Crafting Table',
         async () => {
-            if (hasItem(bot, mcData, 'crafting_table', 1)) return true
+            // Only consider task done if a placed crafting table is accessible in the world
+            // Having the item in inventory is NOT enough — it needs to be placed
             try {
                 return Boolean(getCraftingTable(bot, mcData))
             } catch (_e) {
                 return false
             }
         },
-        async () => ensureCraftingTable(bot, mcData) // This already handles crafting and placement
+        async () => ensureCraftingTable(bot, mcData), // This already handles crafting and placement
+        async (err) => {
+            // If placement fails, move to a new location and try again
+            console.log(`[REPLAN] [${getBotLabel(bot)}] Crafting table placement failed. Moving to new location...`)
+            await exploreRandom(bot, 5)
+        }
     )
 
     // Task 4: Craft wooden pickaxe
@@ -190,7 +207,9 @@ async function phaseWood(bot, mcData) {
             // ACTION: ensure sticks and then craft the pickaxe
             if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
             await craftItem(bot, mcData, 'wooden_pickaxe', 1)
-        }
+        },
+        null,
+        { exploreOnFail: false }
     )
 }
 
@@ -235,7 +254,9 @@ async function phaseStone(bot, mcData) {
             await ensureCraftingTable(bot, mcData)
             if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
             await craftItem(bot, mcData, 'stone_pickaxe', 1)
-        }
+        },
+        null,
+        { exploreOnFail: false }
     )
 }
 
@@ -270,7 +291,7 @@ async function phaseIron(bot, mcData) {
         }
     )
     
-    // Task: Furnace and smelting, no need for recovery here
+    // Task: Furnace and smelting
     await runSmartTask(
         bot, 'Smelt Iron',
         async () => hasItem(bot, mcData, 'iron_ingot', 3),
@@ -290,6 +311,11 @@ async function phaseIron(bot, mcData) {
             }
             // 2. Smelt
             await smeltItem(bot, mcData, 'iron_ingot', 3)
+        },
+        async (err) => {
+            // If smelting fails, move to a new location and try again
+            console.log(`[REPLAN] [${getBotLabel(bot)}] Smelting failed. Moving to new location...`)
+            await exploreRandom(bot, 5)
         }
     )
 
@@ -301,7 +327,9 @@ async function phaseIron(bot, mcData) {
             await ensureCraftingTable(bot, mcData)
             if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
             await craftItem(bot, mcData, 'iron_pickaxe', 1)
-        }
+        },
+        null,
+        { exploreOnFail: false }
     )
 }
 
@@ -327,6 +355,7 @@ async function runFullProgression(bot, mcData, metricsCollector = null) {
     } catch (error) {
         console.log(`[FATAL] [ ${getBotLabel(bot)} ] Progression stopped: ${error.message}`)
         console.error(error)
+        throw error
     }
 }
 

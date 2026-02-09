@@ -31,7 +31,7 @@ export class ActionTracker {
             this.checkStateChange();
         }, pollInterval);
 
-        console.log('[ActionTracker] Automatic action tracking started');
+        console.log(`[ActionTracker] [${this.bot.username}] Automatic action tracking started`);
     }
 
     /**
@@ -51,7 +51,7 @@ export class ActionTracker {
             this.endCurrentAction(false);
         }
 
-        console.log('[ActionTracker] Automatic action tracking stopped');
+        console.log(`[ActionTracker] [${this.bot.username}] Automatic action tracking stopped`);
     }
 
     /**
@@ -85,7 +85,7 @@ export class ActionTracker {
             if (duration > this.STUCK_THRESHOLD_MS && this.startPosition) {
                 const distance = this.startPosition.distanceTo(this.bot.entity.position);
                 if (distance < this.MIN_MOVEMENT_DISTANCE) {
-                    console.warn(`[ActionTracker] Bot appears stuck during move (${(duration/1000).toFixed(1)}s, ${distance.toFixed(2)} blocks)`);
+                    console.warn(`[ActionTracker] [${this.bot.username}] Bot appears stuck during move (${(duration/1000).toFixed(1)}s, ${distance.toFixed(2)} blocks)`);
                     // Don't end the action here - let it complete naturally but log the warning
                 }
             }
@@ -152,7 +152,7 @@ export class ActionTracker {
                 const movedEnough = distance >= this.MIN_MOVEMENT_DISTANCE;
                 
                 if (tookTooLong && !movedEnough) {
-                    console.log(`[ActionTracker] Move appears stuck: ${distance.toFixed(2)} blocks in ${(duration/1000).toFixed(1)}s`);
+                    console.log(`[ActionTracker] [${this.bot.username}] Move appears stuck: ${distance.toFixed(2)} blocks in ${(duration/1000).toFixed(1)}s`);
                     return false;
                 }
                 return movedEnough;
@@ -184,18 +184,37 @@ export class ActionTracker {
 
         const actionName = this.currentAction;
         const duration = (Date.now() - this.startTime) / 1000;
-        
-        // Evaluate actual success based on state changes, not just natural ending
-        const success = naturalEnd ? this.evaluateActionSuccess() : false;
+
+        let success = false;
+        if (naturalEnd) {
+            if (actionName === 'mine') {
+                // Wait briefly for drops to be collected and inventory to update
+                const startCount = this.startInventoryCount;
+                const maxWaitMs = 2000;
+                const pollIntervalMs = 200;
+                const startWait = Date.now();
+                while (Date.now() - startWait < maxWaitMs) {
+                    const currentCount = this.bot.inventory?.items()?.reduce((sum, item) => sum + item.count, 0) || 0;
+                    if (currentCount > startCount) {
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+                }
+            }
+
+            // Evaluate actual success based on state changes, not just natural ending
+            success = this.evaluateActionSuccess();
+        }
 
         this.currentAction = null;
         this.startTime = null;
         this.startPosition = null;
         this.startInventoryCount = 0;
 
+        // Log immediately (before awaiting metrics queue) for responsive feedback
+        console.log(`[ActionTracker] [${this.bot.username}] Action '${actionName}' ended (${duration.toFixed(2)}s, success: ${success})`);
+        
         await this.metrics.trackActionEnd(success, this.bot);
-
-        console.log(`[ActionTracker] Action '${actionName}' ended (${duration.toFixed(2)}s, success: ${success})`);
     }
 
     /**
@@ -237,8 +256,8 @@ export class ActionTracker {
             this.startPosition = null;
             this.startInventoryCount = 0;
 
+            console.log(`[ActionTracker] [${this.bot.username}] Action '${actionName}' force-ended (${duration.toFixed(2)}s, success: ${success})`);
             await this.metrics.trackActionEnd(success, this.bot);
-            console.log(`[ActionTracker] Action '${actionName}' force-ended (${duration.toFixed(2)}s, success: ${success})`);
         }
     }
 }
