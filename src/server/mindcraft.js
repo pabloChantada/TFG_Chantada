@@ -9,15 +9,23 @@ let agent_processes = {};
 let agent_count = 0;
 let mindserver_port = 8080;
 
+
+/**
+ * Initializes the MindCraft server and optionally opens the UI in the default browser.
+ * @param {boolean} host_public - Whether to host the server publicly or on localhost.
+ * @param {number} port - The port to run the MindCraft server on.
+ * @param {boolean} auto_open_ui - Whether to automatically open the UI in the browser after initialization.
+ */
 export async function init(host_public=false, port=8080, auto_open_ui=true) {
     if (connected) {
-        console.error('Already initiliazed!');
+        console.error('Already initialized!');
         return;
     }
     mindserver = createMindServer(host_public, port);
     mindserver_port = port;
     connected = true;
     const disableAutoOpen = process.env.MINDCRAFT_NO_UI === '1' || process.env.NO_UI === '1';
+    
     if (auto_open_ui && !disableAutoOpen) {
         setTimeout(() => {
             // check if browser listener is already open
@@ -28,6 +36,11 @@ export async function init(host_public=false, port=8080, auto_open_ui=true) {
     }
 }
 
+/**
+ * Creates a new agent with the given settings and starts it.
+ * @param {Object} settings - The settings for the agent, including profile information and connection details.
+ * @returns {Object} An object indicating success or failure, and any error message if applicable.
+ */
 export async function createAgent(settings) {
     if (!settings.profile.name) {
         console.error('Agent name is required in profile');
@@ -36,6 +49,7 @@ export async function createAgent(settings) {
             error: 'Agent name is required in profile'
         };
     }
+    // Obtain data from settings, ensuring we don't modify the original object
     settings = JSON.parse(JSON.stringify(settings));
     let agent_name = settings.profile.name;
     const agentIndex = agent_count++;
@@ -59,9 +73,8 @@ export async function createAgent(settings) {
             console.warn(`Attempting to connect anyway...`);
         }
 
-        // Determine agent script - use generic launcher for all agents
-        const script = settings.profile?.custom_script || settings.custom_script || 'src/agents/start_agent.js';
-        
+        const script = 'src/agents/add_agent.js';
+
         console.log(`Starting ${settings.agent_type || 'custom'} agent with script: ${script}`);
         const agentProcess = new AgentProcess(agent_name, mindserver_port, script);
         agentProcess.start(load_memory, init_message, agentIndex);

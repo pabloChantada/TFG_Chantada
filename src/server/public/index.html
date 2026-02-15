@@ -319,37 +319,9 @@
     <div id="agents"></div>
 
     <div class="page-footer">
-        <div>
-            <button id="openCreateAgentBtn" class="start-btn">New Agent</button>
-        </div>
         <div style="display:flex; gap:12px;">
             <button class="stop-btn" onclick="disconnectAllAgents()">Disconnect All Agents</button>
             <button class="stop-btn" onclick="confirmShutdown()">Full Shutdown</button>
-        </div>
-    </div>
-
-    <!-- Modal -->
-    <div id="createAgentModal" class="modal-backdrop">
-        <div class="modal">
-            <div class="modal-header">
-                <h2 style="margin:0;">Create Agent</h2>
-                <button id="closeCreateAgentBtn" class="modal-close-btn">Close</button>
-            </div>
-            <div class="modal-body">
-                <div id="createAgentSection">
-                    <div id="profileStatus" style="margin:6px 0;">Profile: Not uploaded</div>
-                    <div id="settingsForm"></div>
-                    <div id="createError" style="color:#f44336;margin-top:10px;"></div>
-                    <input type="file" id="profileFileInput" accept=".json,application/json" style="display:none">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="footer-left" id="footerStatus">Configure settings, then upload a profile and create the agent.</div>
-                <div class="footer-actions">
-                    <button id="uploadProfileBtn" class="start-btn">Upload Profile</button>
-                    <button id="submitCreateAgentBtn" class="start-btn" disabled>Create Agent</button>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -380,7 +352,6 @@
         const socket = io({ path: window.location.pathname + 'socket.io' })
         const agentsDiv = document.getElementById('agents');
         let settingsSpec = {};
-        let profileData = null;
         const agentSettings = {};
         const agentLastMessage = {};
         const inventoryOpen = {};
@@ -421,115 +392,7 @@
             .then(r => r.json())
             .then(spec => {
                 settingsSpec = spec;
-                buildSettingsForm();
             });
-
-        function buildSettingsForm() {
-            const form = document.getElementById('settingsForm');
-            form.innerHTML = '';
-            // ensure grid for multi-column layout
-            form.style.display = 'grid';
-            form.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
-            form.style.gap = '8px';
-            Object.keys(settingsSpec).forEach(key => {
-                if (key === 'profile') return; // profile handled via upload
-                const cfg = settingsSpec[key];
-                const wrapper = document.createElement('div');
-                wrapper.className = 'setting-wrapper';
-                const label = document.createElement('label');
-                label.textContent = key;
-                label.title = cfg.description || '';
-                let input;
-                switch (cfg.type) {
-                    case 'boolean':
-                        input = document.createElement('input');
-                        input.type = 'checkbox';
-                        input.checked = cfg.default === true;
-                        break;
-                    case 'number':
-                        input = document.createElement('input');
-                        input.type = 'number';
-                        input.value = cfg.default;
-                        break;
-                    default:
-                        input = document.createElement('input');
-                        input.type = 'text';
-                        input.value = typeof cfg.default === 'object' ? JSON.stringify(cfg.default) : cfg.default;
-                }
-                input.title = cfg.description || '';
-                input.id = `setting-${key}`;
-                wrapper.appendChild(label);
-                wrapper.appendChild(input);
-                form.appendChild(wrapper);
-            });
-        }
-
-        document.getElementById('uploadProfileBtn').addEventListener('click', () => {
-            document.getElementById('profileFileInput').click();
-        });
-
-        document.getElementById('profileFileInput').addEventListener('change', e => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = ev => {
-                try {
-                    profileData = JSON.parse(ev.target.result);
-                    document.getElementById('submitCreateAgentBtn').disabled = false;
-                    document.getElementById('profileStatus').textContent = `Profile: ${profileData.name || 'Uploaded'}`;
-                    document.getElementById('createError').textContent = '';
-                } catch (err) {
-                    document.getElementById('createError').textContent = 'Invalid profile JSON: ' + err.message;
-                    profileData = null;
-                    document.getElementById('submitCreateAgentBtn').disabled = true;
-                    document.getElementById('profileStatus').textContent = 'Profile: Not uploaded';
-                }
-            };
-            reader.readAsText(file);
-            e.target.value = '';
-        });
-
-        document.getElementById('submitCreateAgentBtn').addEventListener('click', () => {
-            if (!profileData) return;
-            const settings = { profile: profileData };
-            Object.keys(settingsSpec).forEach(key => {
-                if (key === 'profile') return;
-                const input = document.getElementById(`setting-${key}`);
-                if (!input) return;
-                const type = settingsSpec[key].type;
-                let val;
-                if (type === 'boolean') val = input.checked;
-                else if (type === 'number') val = Number(input.value);
-                else if (type === 'array' || type === 'object') {
-                    try { val = JSON.parse(input.value); }
-                    catch { val = input.value; }
-                } else val = input.value;
-                settings[key] = val;
-            });
-            socket.emit('create-agent', settings, res => {
-                if (!res.success) {
-                    document.getElementById('createError').textContent = res.error || 'Unknown error';
-                } else {
-                    // reset on success
-                    profileData = null;
-                    document.getElementById('submitCreateAgentBtn').disabled = true;
-                    document.getElementById('profileStatus').textContent = 'Profile: Not uploaded';
-                    document.getElementById('createError').textContent = '';
-                    hideCreateAgentModal();
-                }
-            });
-        });
-
-        // Modal open/close logic
-        const modalBackdrop = document.getElementById('createAgentModal');
-        document.getElementById('openCreateAgentBtn').addEventListener('click', () => {
-            buildSettingsForm();
-            modalBackdrop.style.display = 'flex';
-        });
-        function hideCreateAgentModal() {
-            modalBackdrop.style.display = 'none';
-        }
-        document.getElementById('closeCreateAgentBtn').addEventListener('click', hideCreateAgentModal);
 
         socket.on('bot-output', (agentName, message) => {
             agentLastMessage[agentName] = message;

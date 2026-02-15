@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import puppeteer from 'puppeteer';
+import { ActionTracker } from './action_tracker.js';
 
 export class MetricsCollector {
     constructor(agentName, agentType) {
@@ -10,15 +11,18 @@ export class MetricsCollector {
         this.lastPosition = null;
         this.trackingInterval = null; // How many intervals to track in a second
         this.currentAction = null; // Track ongoing action
+        this.actionTracker = null; // Automatic action tracker
         this.captureScreenshots = false;
         this.viewerPort = null;
         this.screenshotsDir = null;
         this.screenshotFormat = 'png';
+        // Could be modified to be 256x256 and not resize un the VAE
         this.screenshotWidth = 1024;
         this.screenshotHeight = 768;
         this.browser = null;
         this.page = null;
         this.screenshotQueue = Promise.resolve(null);
+        this.actionQueue = Promise.resolve(null);
         
         this.metrics = {
             version: null,
@@ -40,11 +44,16 @@ export class MetricsCollector {
             //   success: bool
             // }
             world_model: [], 
-            actions: [], // Name of the action and timestamp
             action_counts: {}, // Count of each action performed
             errors: []
         };
     }
+
+    /**
+     * =============================================================================
+     * ================================ UTILS FUNCTIONS ============================
+     * =============================================================================
+     */
 
     /**
      * Capture current inventory state
@@ -53,6 +62,7 @@ export class MetricsCollector {
      */
     captureInventoryState(bot) {
         if (!bot) return {};
+        // Iterate through bot inventory and capture item names and counts
         return bot.inventory.items().map(item => ({
             name: item.name,
             id: item.type,
@@ -60,57 +70,6 @@ export class MetricsCollector {
         }));
     }
 
-    /**
-     * Start tracking an action
-     * @param {string} actionName - Name of the action
-     * @param {Object} bot - Mineflayer bot instance
-     */
-    trackActionStart(actionName, bot) {
-        this.currentAction = {
-            name: actionName,
-            startTime: new Date().toISOString(),
-            startInventory: this.captureInventoryState(bot)
-        };
-    }
-
-    /**
-     * End action tracking with success/failure status
-     * Records actions
-     * @param {boolean} success - Whether the action succeeded
-     * @param {Object} bot - Mineflayer bot instance
-     */
-    async trackActionEnd(success, bot) {
-        if (!this.currentAction) return;
-        
-        // Capture current action immediately to avoid race conditions
-        const currentActionData = this.currentAction;
-        this.currentAction = null;
-        
-        const completedAction = {
-            name: currentActionData.name,
-            success,
-            startTime: currentActionData.startTime,
-            endTime: new Date().toISOString(),
-            duration: (new Date() - new Date(currentActionData.startTime)) / 1000
-        };
-
-        this.metrics.actions.push(completedAction);
-        
-        const screenshotPath = await this._queueScreenshotCapture();
-
-        // Record action completion to world_model
-        this.metrics.world_model.push({
-            x: bot.entity.position.x,
-            y: bot.entity.position.y,
-            z: bot.entity.position.z,
-            action: completedAction,
-            timestamp: completedAction.endTime,
-            screenshot: screenshotPath
-        });
-        
-        this.metrics.action_counts[currentActionData.name] = 
-            (this.metrics.action_counts[currentActionData.name] || 0) + 1;
-    }
 
     /**
      * Compare two inventory states
@@ -120,8 +79,10 @@ export class MetricsCollector {
      */
     didInventoryChange(startInv, endInv) {
         const changes = [];
+        // Obtain a map of end inventory for lookup
         const endMap = new Map(endInv.map(item => [item.name, item.count]));
         
+        // Check for changed or removed items
         for (const startItem of startInv) {
             const endCount = endMap.get(startItem.name) || 0;
             if (endCount !== startItem.count) {
@@ -145,6 +106,90 @@ export class MetricsCollector {
         
         return changes.length > 0 ? changes : null;
     }
+
+
+
+    /**
+     * Start tracking an action
+     * @param {string} actionName - Name of the action
+     * @param {Object} bot - Mineflayer bot instance
+     */
+    trackActionStart(actionName, bot) {
+        this.currentAction = {
+            name: actionName,
+            startTime: new Date().toISOString(),
+            startInventory: this.captureInventoryState(bot)
+        };
+    }
+
+    /**
+     * End action tracking with success/failure status
+     * Records actions
+     * @param {boolean} success - Whether the action succeeded
+     * @param {Object} bot - Mineflayer bot instance
+     */
+    async trackActionEnd(success, bot) {
+        if (!this.currentAction) return;
+
+        const currentActionData = this.currentAction;
+        this.currentAction = null;
+
+        this.actionQueue = this.actionQueue.then(async () => {
+            const completedAction = {
+                name: currentActionData.name,
+                success,
+                startTime: currentActionData.startTime,
+                endTime: new Date().toISOString(),
+                duration: (new Date() - new Date(currentActionData.startTime)) / 1000
+            };
+
+            const screenshotPath = await this._queueScreenshotCapture();
+
+            // Record action completion to world_model
+            this.metrics.world_model.push({
+                x: bot.entity.position.x,
+                y: bot.entity.position.y,
+                z: bot.entity.position.z,
+                action: completedAction,
+                timestamp: completedAction.endTime,
+                screenshot: screenshotPath
+            });
+            
+            // Count occurrences of this action
+            this.metrics.action_counts[currentActionData.name] = 
+                (this.metrics.action_counts[currentActionData.name] || 0) + 1;
+        });
+
+        return this.actionQueue;
+    }
+
+    /**
+     * Mark task completion
+     * @param {boolean} success - Whether the task succeeded
+     */
+    completeTask(success) {
+        this.metrics.success = success;
+        this.metrics.end_time = new Date().toISOString();
+        this.metrics.time_elapsed_s = 
+            (new Date(this.metrics.end_time) - new Date(this.metrics.start_time)) / 1000;
+    }
+
+    /**
+     * Record an error
+     * @param {string} errorMessage - Error message to record
+     */
+    recordError(errorMessage) {
+        this.metrics.errors.push({
+            message: errorMessage,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    /**
+     * =============================================================================
+     * ================================ MAIN FUNCTIONS =============================
+     * =============================================================================
+     */
 
     /**
      * Initialize metrics collection
@@ -174,55 +219,36 @@ export class MetricsCollector {
         this.captureScreenshots = Boolean(captureScreenshots);
         this.viewerPort = viewerPort;
         if (this.captureScreenshots) {
-            this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}/screenshots`;
+            this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}_screenshots/`;
         }
         
         console.log(`[${this.agentName}] Metrics initialized - Export path: ${this.exportPath}`);
     }
 
-    async _ensureScreenshotDir() {
-        if (!this.screenshotsDir) return;
-        if (!fs.existsSync(this.screenshotsDir)) {
-            fs.mkdirSync(this.screenshotsDir, { recursive: true });
+    /**
+     * Start automatic action tracking based on bot state
+     * @param {Object} bot - Mineflayer bot instance
+     * @param {number} pollInterval - How often to check state (ms, default 100ms)
+     */
+    startActionTracking(bot, pollInterval = 50) {
+        if (!bot) {
+            console.warn('[MetricsCollector] Cannot start action tracking: bot not provided');
+            return;
         }
+
+        this.actionTracker = new ActionTracker(bot, this);
+        this.actionTracker.start(pollInterval);
+        console.log('[MetricsCollector] Automatic action tracking started');
     }
 
-    async _ensureBrowser() {
-        if (!this.captureScreenshots || !this.viewerPort) return;
-        if (this.browser && this.page) return;
-
-        this.browser = await puppeteer.launch({ headless: 'new' });
-        this.page = await this.browser.newPage();
-        await this.page.setViewport({ width: this.screenshotWidth, height: this.screenshotHeight });
-        await this.page.goto(`http://localhost:${this.viewerPort}`, { waitUntil: 'networkidle0' });
-        await this.page.waitForSelector('canvas');
-    }
-
-    async _captureViewerScreenshot() {
-        if (!this.captureScreenshots || !this.viewerPort) return null;
-        try {
-            await this._ensureScreenshotDir();
-            await this._ensureBrowser();
-
-            const canvas = await this.page.$('canvas');
-            if (!canvas) return null;
-
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `worldmodel_${timestamp}.${this.screenshotFormat}`;
-            const filePath = path.join(this.screenshotsDir, filename);
-
-            await canvas.screenshot({ path: filePath, type: this.screenshotFormat });
-            return filePath;
-        } catch (error) {
-            console.warn(`[${this.agentName}] Screenshot capture failed: ${error.message}`);
-            return null;
+    /**
+     * Stop automatic action tracking
+     */
+    stopActionTracking() {
+        if (this.actionTracker) {
+            this.actionTracker.stop();
+            this.actionTracker = null;
         }
-    }
-
-    async _queueScreenshotCapture() {
-        if (!this.captureScreenshots) return null;
-        this.screenshotQueue = this.screenshotQueue.then(() => this._captureViewerScreenshot());
-        return this.screenshotQueue;
     }
 
     /**
@@ -234,18 +260,22 @@ export class MetricsCollector {
     startWorldTracking(bot, samplingRate = 1) {
         if (!bot) return;
 
+        // Start automatic action tracking alongside world tracking
+        this.startActionTracking(bot, 100);
+
         // Copy the initial position
         this.lastPosition = bot.entity.position.clone();
 
         const intervalMs = 1000 / samplingRate;
+        // More threshold than 0.05 can cause to always be considered as idle
         const movementThreshold = 0.05; // Minimum distance to consider as "moving"
 
         // Sample bot state at fixed intervals
         this.trackingInterval = setInterval(async () => {
             const currentPos = bot.entity.position;
+            // Obtain the traveled distance since last sample
             const dist = this.lastPosition.distanceTo(currentPos);
 
-            // Update exploration distance if moved
             this.metrics.exploration_distance += dist;
 
             // Determine current action state
@@ -262,6 +292,7 @@ export class MetricsCollector {
             
             // Create action object
             let actionObj = null;
+            // Right now we only use 'mine'
             if (this.currentAction) {
                 actionObj = {
                     name: this.currentAction.name,
@@ -314,43 +345,76 @@ export class MetricsCollector {
     }
 
     /**
-     * Track an action performed by the agent
-     * @param {string} actionName - Name of the action
+     * =============================================================================
+     * ================================ SCREENSHOT FUNCTIONS =======================
+     * =============================================================================
      */
-    trackAction(actionName) {
-        this.metrics.steps_taken++;
 
-        // Record sequence of actions
-        this.metrics.actions.push({
-            name: actionName,
-            timestamp: new Date().toISOString()
-        });
-
-        // Count occurrences
-        this.metrics.action_counts[actionName] = (this.metrics.action_counts[actionName] || 0) + 1;
+    /**
+     * Checks if screenshots directory exists and creates it if not
+     * @returns true if the directory exists or was created successfully, false otherwise
+     */
+    async _ensureScreenshotDir() {
+        if (!this.screenshotsDir) return;
+        if (!fs.existsSync(this.screenshotsDir)) {
+            fs.mkdirSync(this.screenshotsDir, { recursive: true });
+        }
     }
 
     /**
-     * Record an error
-     * @param {string} errorMessage - Error message to record
+     * Checks if the browser and page are initialized, and initializes them if not
      */
-    recordError(errorMessage) {
-        this.metrics.errors.push({
-            message: errorMessage,
-            timestamp: new Date().toISOString()
-        });
+    async _ensureBrowser() {
+        if (!this.captureScreenshots || !this.viewerPort) return;
+        if (this.browser && this.page) return;
+
+        this.browser = await puppeteer.launch({ headless: 'new' });
+        this.page = await this.browser.newPage();
+        await this.page.setViewport({ width: this.screenshotWidth, height: this.screenshotHeight });
+        await this.page.goto(`http://localhost:${this.viewerPort}`, { waitUntil: 'networkidle0' });
+        await this.page.waitForSelector('canvas');
     }
 
     /**
-     * Mark task completion
-     * @param {boolean} success - Whether the task succeeded
+     * Captures a screenshot of the viewer canvas and saves it to the screenshots directory
      */
-    completeTask(success) {
-        this.metrics.success = success;
-        this.metrics.end_time = new Date().toISOString();
-        this.metrics.time_elapsed_s = 
-            (new Date(this.metrics.end_time) - new Date(this.metrics.start_time)) / 1000;
+    async _captureViewerScreenshot() {
+        if (!this.captureScreenshots || !this.viewerPort) return null;
+        try {
+            await this._ensureScreenshotDir();
+            await this._ensureBrowser();
+
+            const canvas = await this.page.$('canvas');
+            if (!canvas) return null;
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `worldmodel_${timestamp}.${this.screenshotFormat}`;
+            const filePath = path.join(this.screenshotsDir, filename);
+
+            await canvas.screenshot({ path: filePath, type: this.screenshotFormat });
+            return filePath;
+        } catch (error) {
+            console.warn(`[${this.agentName}] Screenshot capture failed: ${error.message}`);
+            return null;
+        }
     }
+
+    /**
+     * Queues a screenshot capture to avoid overlapping captures
+     * May have some delay if captures take longer than the tracking interval, but ensures we get a screenshot for each recorded action without conflicts
+     */
+    async _queueScreenshotCapture() {
+        if (!this.captureScreenshots) return null;
+        this.screenshotQueue = this.screenshotQueue.then(() => this._captureViewerScreenshot());
+        return this.screenshotQueue;
+    }
+
+
+    /**
+     * =============================================================================
+     * ================================ GET'S AND EXPORTS ==========================
+     * =============================================================================
+     */
 
     /**
      * Get current metrics snapshot
@@ -378,8 +442,8 @@ export class MetricsCollector {
                 console.log(`[${this.agentName}] Created metrics directory: ${dir}`);
             }
 
-            // Add final bot state to metrics if available
-            if (bot) {
+            // Add th commit version as an ID of the metric
+            if (bot && bot.entity && bot.inventory) {
                 await this.getVersion(bot);
             }
 
@@ -392,7 +456,8 @@ export class MetricsCollector {
     }
 
     /**
-     * * @param {*} bot 
+     * Capture final version (git commit hash), then export metrics to JSON file
+     * @param {Object} bot - Mineflayer bot instance to capture final state and version information
      */
     async getVersion(bot) {
         // Get git version
@@ -407,11 +472,15 @@ export class MetricsCollector {
             this.metrics.version = bot.version || 'unknown';
         }
 
-        this.metrics.final_position = bot.entity.position;
-        this.metrics.final_inventory = bot.inventory.items().map(item => ({
-            name: item.name,
-            count: item.count
-        }));
+        if (bot?.entity?.position) {
+            this.metrics.final_position = bot.entity.position;
+        }
+        if (bot?.inventory?.items) {
+            this.metrics.final_inventory = bot.inventory.items().map(item => ({
+                name: item.name,
+                count: item.count
+            }));
+        }
     }
 
     /**

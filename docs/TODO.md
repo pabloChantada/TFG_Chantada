@@ -16,26 +16,37 @@
 - [x] Exploración de madera con `getBiomeName()`
 - [x] Rotura accidental de mesa al explorar → mejorar placement logic
 - [x] Acceso concurrente a memoria → revisar sistema
-
-## En Progreso
-- [ ] Llegar hasta hierro end-to-end estable
+- [x] World Models -> Investigar
+  - [x] Crear red de refuerzo para: predecir acciones | generar imagenes
+  - [x] Las imagenes seran como maxisimo 256x256
+- [x] Llegar hasta hierro end-to-end estable
   - [x] Reordenar progreso: minar carbón/hierro → colocar horno → fundir
   - [x] Descartar straight mining, usar búsqueda omnisciente con findBlock
-  - [ ] Robustecer crafteo con mesa (evitar windowO fpen timeout)
+  - [x] Robustecer crafteo con mesa (evitar windowO fpen timeout)
   - [x] Ajustar criterios "has()" para items vs bloques
   - [x] Añadir telemetría mínima para diagnosticar fallos
-  - [ ] Implementar replanificacino completa
- 
+- [x] Implementar replanificacino completa
+- [x] Estabilizar exploración (evitar loops infinitos)
+
+## En Progreso
+ - [ ] Limpiar y refactorizar
+  - [x] Agents
+  - [ ] Evaluations
+  - [x] HTN
+    - [x] Primitivas
+    - [x] Task
+    - [x] Progresion
+  - [x] Metrics
+  - [x] Server
+
+- [ ] Analisis de entrenamiento
+
 ## Por Hacer
 - [ ] Comunicación multiagente para replanificación
 - [ ] Recipes no hardcoded (planificador recursivo/crafting graph)
-- [ ] Estabilizar exploración (evitar loops infinitos)
 - [ ] Manejo robusto de agua
 - [ ] Automatizar creacion de mundos
-- [ ] World Models -> Investigar
-  - [ ] Crear red de refuerzo para: predecir acciones | generar imagenes
-  - [ ] Las imagenes seran como maxisimo 256x256
-- [ ] Probar autoencoder sin decoder VS solo autoencoder
+- [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
 
 
 ## Notas Técnicas
