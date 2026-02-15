@@ -18,8 +18,9 @@ class MindServerProxy {
         MindServerProxy.instance = this;
     }
 
-    async connect(name, port) {
+    async connect(name, port, options = {}) {
         if (this.connected) return;
+        const { skipSettings = false, allowMissingSettings = false } = options;
         
         this.name = name;
         this.socket = io(`http://localhost:${port}`);
@@ -79,6 +80,10 @@ class MindServerProxy {
             }
         });
 
+        if (skipSettings) {
+            return;
+        }
+
         // Request settings and wait for response
         await new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -88,6 +93,9 @@ class MindServerProxy {
             this.socket.emit('get-settings', name, (response) => {
                 clearTimeout(timeout);
                 if (response.error) {
+                    if (allowMissingSettings) {
+                        return resolve();
+                    }
                     return reject(new Error(response.error));
                 }
                 setSettings(response.settings);

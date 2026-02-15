@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import { logoutAgent } from '../mindcraft/mindserver.js';
 
 export class AgentProcess {
-    constructor(name, port, script = 'src/process/init_agent.js') {
+    constructor(name, port, script = 'src/agents/add_agent.js') {
         this.name = name;
         this.port = port;
         this.script = script;
