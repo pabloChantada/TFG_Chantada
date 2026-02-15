@@ -230,7 +230,7 @@ export class MetricsCollector {
      * @param {Object} bot - Mineflayer bot instance
      * @param {number} pollInterval - How often to check state (ms, default 100ms)
      */
-    startActionTracking(bot, pollInterval = 100) {
+    startActionTracking(bot, pollInterval = 50) {
         if (!bot) {
             console.warn('[MetricsCollector] Cannot start action tracking: bot not provided');
             return;
@@ -443,7 +443,7 @@ export class MetricsCollector {
             }
 
             // Add th commit version as an ID of the metric
-            if (bot) {
+            if (bot && bot.entity && bot.inventory) {
                 await this.getVersion(bot);
             }
 
@@ -472,11 +472,15 @@ export class MetricsCollector {
             this.metrics.version = bot.version || 'unknown';
         }
 
-        this.metrics.final_position = bot.entity.position;
-        this.metrics.final_inventory = bot.inventory.items().map(item => ({
-            name: item.name,
-            count: item.count
-        }));
+        if (bot?.entity?.position) {
+            this.metrics.final_position = bot.entity.position;
+        }
+        if (bot?.inventory?.items) {
+            this.metrics.final_inventory = bot.inventory.items().map(item => ({
+                name: item.name,
+                count: item.count
+            }));
+        }
     }
 
     /**

@@ -188,18 +188,8 @@ export class ActionTracker {
         let success = false;
         if (naturalEnd) {
             if (actionName === 'mine') {
-                // Wait briefly for drops to be collected and inventory to update
-                const startCount = this.startInventoryCount;
-                const maxWaitMs = 2000;
-                const pollIntervalMs = 200;
-                const startWait = Date.now();
-                while (Date.now() - startWait < maxWaitMs) {
-                    const currentCount = this.bot.inventory?.items()?.reduce((sum, item) => sum + item.count, 0) || 0;
-                    if (currentCount > startCount) {
-                        break;
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
-                }
+                // Brief non-blocking wait for inventory update
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             // Evaluate actual success based on state changes, not just natural ending

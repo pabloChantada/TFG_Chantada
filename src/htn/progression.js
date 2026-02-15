@@ -51,8 +51,15 @@ async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = n
             await actionFn()
             await bot.waitForTicks(10)
         } catch (err) {
+            attempts++ // Increment attempts on every failure
             console.error(`[ERROR] [${getBotLabel(bot)}] ${taskName}: ${err.message}`)
-            console.log(`[FAIL] [${getBotLabel(bot)}] ${taskName} - Try ${attempts + 1}/${maxAttempts}`)
+            console.log(`[FAIL] [${getBotLabel(bot)}] ${taskName} - Try ${attempts}/${maxAttempts}`)
+
+            // Check if we've exhausted attempts
+            if (attempts >= maxAttempts) {
+                console.error(`[ABORT] [${getBotLabel(bot)}] Max attempts reached for ${taskName}`)
+                break
+            }
 
             // Replan
             if (recoveryFn) {
@@ -62,15 +69,19 @@ async function runSmartTask(bot, taskName, conditionFn, actionFn, recoveryFn = n
                     // For example, if the main action was mining and it failed due to a missing tool, the recoveryFn could be to craft that tool.
                     await recoveryFn(err)
                     console.log(`[REPLAN] Recovery finished. Retrying main task.`)
-                    continue 
                 } catch (recoveryErr) {
                     console.error(`[FATAL] Recovery failed: ${recoveryErr.message}`)
+                    // After recovery fails, explore if enabled
+                    if (exploreOnFail) {
+                        try {
+                            await exploreRandom(bot, 10)
+                        } catch (exploreError) {
+                            console.warn(`[REPLAN] [${getBotLabel(bot)}] Explore failed: ${exploreError.message}`)
+                        }
+                    }
                 }
-            }
-            
-            // If no recovery or it failed, increment attempts and explore to get unstuck
-            attempts++
-            if (exploreOnFail) {
+            } else if (exploreOnFail) {
+                // If no recovery function, explore to get unstuck
                 try {
                     await exploreRandom(bot, 10)
                 } catch (exploreError) {
@@ -313,9 +324,40 @@ async function phaseIron(bot, mcData) {
             await smeltItem(bot, mcData, 'iron_ingot', 3)
         },
         async (err) => {
-            // If smelting fails, move to a new location and try again
-            console.log(`[REPLAN] [${getBotLabel(bot)}] Smelting failed. Moving to new location...`)
-            await exploreRandom(bot, 5)
+            // If smelting fails, break and replace the furnace
+            console.log(`[REPLAN] [${getBotLabel(bot)}] Smelting failed. Breaking old furnace and placing new one...`)
+            try {
+                // Import needed functions
+                const { getFurnace, clearFurnaceMemory } = await import('./primitives/structures.js')
+                
+                // Clear furnace memory so it doesn't try to use the broken one
+                clearFurnaceMemory(bot)
+                
+                // Try to break nearby furnace if it exists
+                const oldFurnace = bot.findBlock({
+                    matching: getItemId(mcData, 'furnace'),
+                    maxDistance: 32
+                })
+                
+                if (oldFurnace) {
+                    console.log(`[REPLAN] Breaking old furnace at (${oldFurnace.position.x}, ${oldFurnace.position.y}, ${oldFurnace.position.z})`)
+                    await mineBlock(bot, mcData, 'furnace', 1)
+                }
+                
+                // Move to new location
+                await exploreRandom(bot, 10)
+                
+                // Craft new furnace if needed
+                if (!hasItem(bot, mcData, 'furnace', 1)) {
+                    await ensureCraftingTable(bot, mcData)
+                    await craftItem(bot, mcData, 'furnace', 1)
+                }
+                
+            } catch (recoveryErr) {
+                console.warn(`[REPLAN] Furnace recovery had issues: ${recoveryErr.message}`)
+                // Even if recovery fails partially, move and let retry handle it
+                await exploreRandom(bot, 5)
+            }
         }
     )
 

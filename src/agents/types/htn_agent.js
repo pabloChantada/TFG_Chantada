@@ -11,6 +11,8 @@ export class HTNAgent extends BaseAgent {
         // Recolect metrics specific to HTN execution
         this.metricsCollector = new MetricsCollector(agentName, `htn`);
         this.memoryPath = `src/agents/memories/${agentName}_memory.json`;
+        // Store signal handlers for cleanup
+        this.signalHandlers = [];
     }
 
     /**
@@ -55,15 +57,55 @@ export class HTNAgent extends BaseAgent {
             this.bot.trackAction = this.trackAction.bind(this);
 
             // Handle graceful shutdown on Ctrl+C
-            const handleShutdown = async (signal) => {
-                console.log(`\n[INFO] [${this.name}] Received ${signal}, shutting down gracefully...`);
-                this.metricsCollector.recordError(`Interrupted by ${signal}`);
+            const handleSIGINT = async () => {
+                console.log(`\n[INFO] [${this.name}] Received SIGINT, shutting down gracefully...`);
+                this.metricsCollector.recordError(`Interrupted by SIGINT`);
                 await this.metricsCollector.export(this.bot);
                 await this.shutdown();
-                process.exit(0);
+                process.exit(130); // Standard exit code for SIGINT
             };
-            process.on(`SIGINT`, () => handleShutdown(`SIGINT`));
-            process.on(`SIGTERM`, () => handleShutdown(`SIGTERM`));
+            const handleSIGTERM = async () => {
+                console.log(`\n[INFO] [${this.name}] Received SIGTERM, shutting down gracefully...`);
+                this.metricsCollector.recordError(`Interrupted by SIGTERM`);
+                await this.metricsCollector.export(this.bot);
+                await this.shutdown();
+                process.exit(143); // Standard exit code for SIGTERM
+            };
+            process.on(`SIGINT`, handleSIGINT);
+            process.on(`SIGTERM`, handleSIGTERM);
+            this.signalHandlers = [
+                { signal: 'SIGINT', handler: handleSIGINT },
+                { signal: 'SIGTERM', handler: handleSIGTERM }
+            ];
+
+            // Handle bot disconnection during execution (keepalive timeout, kicked, etc.)
+            this.bot.on('error', (err) => {
+                console.error(`[ERROR] [${this.name}] Bot error during execution: ${err.message}`);
+                this.metricsCollector.recordError(`Bot error: ${err.message}`);
+                this.metricsCollector.completeTask(false);
+                this.metricsCollector.export(this.bot)
+                    .catch(() => {})
+                    .finally(() => {
+                        this.shutdown()
+                            .catch(() => {})
+                            .finally(() => process.exit(1));
+                    });
+            });
+            this.bot.on('kicked', (reason) => {
+                console.error(`[ERROR] [${this.name}] Bot kicked during execution: ${reason}`);
+                this.metricsCollector.recordError(`Bot kicked: ${reason}`);
+                this.metricsCollector.completeTask(false);
+                this.metricsCollector.export(this.bot)
+                    .catch(() => {})
+                    .finally(() => {
+                        this.shutdown()
+                            .catch(() => {})
+                            .finally(() => process.exit(1));
+                    });
+            });
+            this.bot.on('end', (reason) => {
+                console.warn(`[WARN] [${this.name}] Bot connection ended: ${reason}`);
+            });
 
             // Start HTN logic
             console.log(`[INFO] [${this.name}] Starting HTN execution...`);
@@ -75,7 +117,7 @@ export class HTNAgent extends BaseAgent {
             this.metricsCollector.recordError(error.message);
             await this.metricsCollector.export(this.bot);
             await this.shutdown();
-            throw error;
+            process.exit(1);
         }
     }
 
@@ -94,15 +136,50 @@ export class HTNAgent extends BaseAgent {
             this.metricsCollector.completeTask(result?.success || false);
             
             console.log(`[INFO] [${this.name}] HTN execution completed - Success: ${result?.success}`);
-            await this.metricsCollector.export(this.bot);
+            
+            // Safety net: force exit after 10 seconds if cleanup hangs
+            const forceExitTimeout = setTimeout(() => {
+                console.warn(`[WARN] [${this.name}] Cleanup timed out, forcing exit...`);
+                process.exit(0);
+            }, 10000);
+            forceExitTimeout.unref(); // Don't let this timer keep the process alive
+            
+            try {
+                await this.metricsCollector.export(this.bot);
+                console.log(`[INFO] [${this.name}] Metrics exported.`);
+            } catch (e) {
+                console.warn(`[WARN] [${this.name}] Metrics export failed: ${e.message}`);
+            }
+
+            try {
+                await this.shutdown();
+                console.log(`[INFO] [${this.name}] Shutdown complete.`);
+            } catch (e) {
+                console.warn(`[WARN] [${this.name}] Shutdown error: ${e.message}`);
+            }
+            
+            clearTimeout(forceExitTimeout);
+            console.log(`[INFO] [${this.name}] Exiting process...`);
+            process.exit(0);
             
         } catch (error) {
-            this.metricsCollector.recordError(error.message);
+            this.metricsCollector.recordError(error?.message || String(error));
             this.metricsCollector.completeTask(false);
             
             console.error(`[ERROR] [${this.name}] HTN execution failed:`, error);
-            await this.metricsCollector.export(this.bot);
-            throw error;
+            
+            // Safety net for error path too
+            const forceExitTimeout = setTimeout(() => {
+                console.warn(`[WARN] [${this.name}] Error cleanup timed out, forcing exit...`);
+                process.exit(1);
+            }, 10000);
+            forceExitTimeout.unref();
+            
+            try { await this.metricsCollector.export(this.bot); } catch (_) {}
+            try { await this.shutdown(); } catch (_) {}
+            
+            clearTimeout(forceExitTimeout);
+            process.exit(1);
         }
     }         
 
@@ -113,5 +190,36 @@ export class HTNAgent extends BaseAgent {
      */
     async trackAction(actionName) {
         this.metricsCollector.trackAction(actionName);
+    }
+
+    /**
+     * Shutdown HTN agent and cleanup resources
+     * @return {Promise<void>}
+     */
+    async shutdown() {
+        console.log(`[INFO] [${this.name}] Shutting down HTN agent...`);
+        
+        // Remove signal handlers to prevent interference
+        if (this.signalHandlers) {
+            for (const { signal, handler } of this.signalHandlers) {
+                process.removeListener(signal, handler);
+            }
+            this.signalHandlers = [];
+        }
+        
+        // Stop metrics tracking and close browser
+        await this.metricsCollector.stopWorldTracking();
+        
+        // Disconnect from MindServer
+        try {
+            await serverProxy.disconnect();
+        } catch (e) {
+            console.warn(`[WARN] [${this.name}] Error disconnecting from MindServer:`, e.message);
+        }
+        
+        // Call base shutdown to quit bot
+        await super.shutdown();
+        
+        console.log(`[INFO] [${this.name}] Shutdown complete`);
     }
 }

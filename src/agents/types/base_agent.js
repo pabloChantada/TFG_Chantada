@@ -192,7 +192,9 @@ export class BaseAgent {
         if (this.bot) {
             console.log(`[INFO] [${this.name}] Shutting down...`);
             try {
-                await this.bot.quit();
+                if (typeof this.bot.quit === 'function') {
+                    await this.bot.quit();
+                }
             } catch (e) {
                 console.error(`[ERROR] [${this.name}] Error during shutdown:`, e.message);
             }

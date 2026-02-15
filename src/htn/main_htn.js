@@ -26,6 +26,10 @@ export async function startHTN(bot, inventoryPort = 3001, metricsCollector = nul
     defaultMove.canDig = true
     defaultMove.dontMineUnderFallingBlock = false 
     bot.pathfinder.setMovements(defaultMove)
+    
+    // Limit pathfinder computation to prevent event loop blocking (keepalive timeout)
+    bot.pathfinder.thinkTimeout = 2000  // Max 2s to compute a path before giving up
+    bot.pathfinder.tickTimeout = 15     // Max ms per tick for path computation
 
     bot.on('chat', async (username, message) => {
         if (username === bot.username) return
