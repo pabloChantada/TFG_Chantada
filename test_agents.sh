@@ -85,10 +85,13 @@ done
 
 if [[ -n "$NAMES" ]]; then
 	IFS=',' read -r -a NAME_LIST <<< "$NAMES"
-	echo "Launching ${#NAME_LIST[@]} agents in background..."
+	echo "Running ${#NAME_LIST[@]} agents sequentially (one at a time)..."
 	for i in "${!NAME_LIST[@]}"; do
 		AGENT_NAME="${NAME_LIST[$i]}"
-		echo "Starting agent: $AGENT_NAME (index $i)"
+		echo ""
+		echo "========================================"
+		echo "Starting agent $((i+1))/${#NAME_LIST[@]}: $AGENT_NAME"
+		echo "========================================"
 		node src/agents/add_agent.js \
 			--name "$AGENT_NAME" \
 			--type "$TYPE" \
@@ -97,10 +100,12 @@ if [[ -n "$NAMES" ]]; then
 			--count "$i" \
 			--metrics-path "$METRICS_PATH" \
 			$( [[ "$LOAD_MEMORY" == "true" ]] && echo "--load-memory" ) \
-			$( [[ -n "$INIT_MESSAGE" ]] && echo "--init-message" "$INIT_MESSAGE" ) &
+			$( [[ -n "$INIT_MESSAGE" ]] && echo "--init-message" "$INIT_MESSAGE" )
+		echo ""
+		echo "Agent $AGENT_NAME completed."
 	done
-	echo "All agents launched. Press Ctrl+C to stop all."
-	wait
+	echo ""
+	echo "All agents completed successfully!"
 	exit 0
 fi
 

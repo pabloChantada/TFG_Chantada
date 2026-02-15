@@ -41,6 +41,30 @@ function saveStructureToMemory(bot, structureName, position) {
 }
 
 /**
+ * Clears a structure from bot memory
+ * @param {Bot} bot - The mineflayer bot instance
+ * @param {string} structureName - Name of the structure to remove
+ */
+function clearStructureFromMemory(bot, structureName) {
+    const filePath = getMemoryPath(bot)
+    
+    if (!fs.existsSync(filePath)) {
+        return
+    }
+    
+    try {
+        let memoryData = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+        if (memoryData[structureName]) {
+            delete memoryData[structureName]
+            fs.writeFileSync(filePath, JSON.stringify(memoryData, null, 2))
+            console.log(`[clearStructureFromMemory] Cleared ${structureName} from memory`)
+        }
+    } catch (e) {
+        console.warn(`[clearStructureFromMemory] Failed to clear ${structureName}: ${e.message}`)
+    }
+}
+
+/**
  * Obtains a stored structure (crafting_table, furnace, etc) from bot memory
  * @param {Bot} bot - The mineflayer bot instance
  * @param {Object} mcData - The minecraft data
@@ -116,8 +140,18 @@ function getFurnace(bot, mcData) {
     return getStructure(bot, mcData, 'furnace', false)
 }
 
+/**
+ * Clears furnace from bot memory (useful when furnace is broken or not working)
+ * @param {Bot} bot - The mineflayer bot instance
+ */
+function clearFurnaceMemory(bot) {
+    clearStructureFromMemory(bot, 'furnace')
+}
+
 export {
     getCraftingTable,
     getFurnace,
-    saveStructureToMemory
+    clearFurnaceMemory,
+    saveStructureToMemory,
+    clearStructureFromMemory
 }
