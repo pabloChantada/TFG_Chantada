@@ -27,16 +27,16 @@ from vae_visuals import plot_metrics_bar, plot_reconstructions, plot_training_cu
 
 
 # --- CONFIGURACION ---
-AGENT_METRICS_PATH = "/Users/circus/repos/TFG_Chantada/src/metrics/agent_metrics"
-LEARNING_RATE = 1e-3
+AGENT_METRICS_PATH = "F:/repos/TFG_Chantada/src/metrics/agent_metrics"
+LEARNING_RATE = 1e-4
 DEVICE = torch.device(
-    "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+    "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 )
 
 VAE_CONFIGS = {
-    "small": {"image_size": 64, "latent_dim": 32, "batch_size": 128, "epochs": 10},
-    "medium": {"image_size": 128, "latent_dim": 64, "batch_size": 128, "epochs": 10},
-    "large": {"image_size": 128, "latent_dim": 128, "batch_size": 128, "epochs": 10},
+    "small": {"image_size": 64, "latent_dim": 32, "batch_size": 256, "epochs": 40},
+    "medium": {"image_size": 128, "latent_dim": 64, "batch_size": 256, "epochs": 40},
+    "large": {"image_size": 128, "latent_dim": 128, "batch_size": 256, "epochs": 40},
 }
 
 
@@ -164,7 +164,7 @@ class VAE(nn.Module):
 
 
 def loss_function(recon_x, x, mu, logvar, beta=1.0):
-    reconstruction_loss = F.l1_loss(recon_x, x, reduction="sum")
+    reconstruction_loss = F.mse_loss(recon_x, x, reduction="sum")
     kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     return reconstruction_loss + (beta * kld_loss), reconstruction_loss, kld_loss
 
@@ -192,7 +192,7 @@ def train(screenshot_path, image_size, latent_dim, batch_size, epochs, save_path
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = VAE(latent_dim=latent_dim, image_size=image_size).to(DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
     kl_annealing_epochs = 20
@@ -214,7 +214,16 @@ def train(screenshot_path, image_size, latent_dim, batch_size, epochs, save_path
             recon_batch, mu, logvar = model(data)
             loss, _, _ = loss_function(recon_batch, data, mu, logvar, beta)
 
+            # Check for NaN or inf in loss
+            if not torch.isfinite(loss):
+                print(f"Warning: Non-finite loss detected at epoch {epoch+1}, batch {batch_idx+1}. Stopping training.")
+                return model, history
+
             loss.backward()
+
+            # Add gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
             train_loss += loss.item()
 
@@ -358,4 +367,13 @@ def compare_architectures(base_path=AGENT_METRICS_PATH, sample_images=10, seed=7
 
 
 if __name__ == "__main__":
+    '''
+    print(torch.cuda.is_available())
+    print(torch.cuda.get_device_name(0))
+
+    print("CUDA disponible:", torch.cuda.is_available())
+    print("Dispositivo actual:", DEVICE)
+    if torch.cuda.is_available():
+        print("GPU:", torch.cuda.get_device_name(0))
+    '''
     compare_architectures()
