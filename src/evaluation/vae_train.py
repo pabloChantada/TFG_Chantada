@@ -27,7 +27,7 @@ from vae_visuals import plot_metrics_bar, plot_reconstructions, plot_training_cu
 
 
 # --- CONFIGURACION ---
-AGENT_METRICS_PATH = "F:/repos/TFG_Chantada/src/metrics/agent_metrics"
+AGENT_METRICS_PATH = "src/metrics/agent_metrics"
 LEARNING_RATE = 1e-4
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -182,7 +182,7 @@ def train(screenshot_path, image_size, latent_dim, batch_size, epochs, save_path
     print(f"Config: image_size={image_size}, latent_dim={latent_dim}, batch_size={batch_size}, epochs={epochs}")
     print("=" * 60 + "\n")
 
-    weights_dir = "weights"
+    weights_dir = "src\evaluation\weights"
     os.makedirs(weights_dir, exist_ok=True)
 
     checkpoint_name = f"best_weights_img{image_size}_latent{latent_dim}_lr{LEARNING_RATE:.0e}_bs{batch_size}.pth"
@@ -239,7 +239,7 @@ def train(screenshot_path, image_size, latent_dim, batch_size, epochs, save_path
 
         if avg_loss < best_loss:
             best_loss = avg_loss
-            torch.save(model.state_dict(), checkpoint_path)
+        #    torch.save(model.state_dict(), checkpoint_path)
             print(f"   Nuevo mejor loss. Guardado en {checkpoint_path}")
 
         scheduler.step()
@@ -337,7 +337,7 @@ def compare_architectures(base_path=AGENT_METRICS_PATH, sample_images=10, seed=7
         print(f"Entrenando arquitectura: {name}")
         print("=" * 80)
 
-        save_path = f"vae_minecraft_{name}.pth"
+        save_path = f"src/evaluation/models/vae_minecraft_{name}.pth"
         model, history = train(
             screenshot_path=base_path,
             image_size=cfg["image_size"],
