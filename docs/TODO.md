@@ -48,6 +48,14 @@
 - [ ] Automatizar creacion de mundos
 - [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
 
+---
+
+- [ ] Aumentar el numero de accinoes:
+  - [ ] Movimiento de camara
+  - [ ] Todos los botones que podria usar el jugador, mas low-level que las accinoes basicas (aunque estas no se quitan)
+- [ ] Usar rl para talar madera (maybe crear un pico de madera, aunque seria redundante ya que son tareas "automaticas")
+  - [ ] Quitar la omnisciencia, puede saber las coordenadas de los bloques que ve como muchisimo. Pero no debe saber donde esta
+  el hierro por ejemplo. 
 
 ## Notas Técnicas
 - Prioridad: mejor exploración y condiciones de salida claras en recolección de materias primas
