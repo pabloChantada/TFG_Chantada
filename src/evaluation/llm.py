@@ -257,7 +257,7 @@ def train_model(
     seed=42,
 ):
     """Full training pipeline using ResNet-18 transfer learning."""
-    print("\n" + "=" * 60)
+    print("/n" + "=" * 60)
     print("ACTION PREDICTOR — TRAINING (ResNet-18)")
     print("=" * 60)
     print(f"Device       : {DEVICE}")
@@ -268,7 +268,7 @@ def train_model(
     print(f"Batch size   : {batch_size}")
     print(f"Epochs       : {epochs}")
     print(f"LR           : {lr}")
-    print("=" * 60 + "\n")
+    print("=" * 60 + "/n")
 
     start = time.time()
     # ── 1. Load data ─────────────────────────────────────────────────
@@ -281,7 +281,7 @@ def train_model(
 
     print(f"Train: {len(train_entries)}  |  Val: {len(val_entries)}")
     print(f"Label distribution (train): {Counter(train_labels)}")
-    print(f"Label distribution (val)  : {Counter(val_labels)}\n")
+    print(f"Label distribution (val)  : {Counter(val_labels)}/n")
 
     train_ds = ActionDataset(train_entries, image_size=image_size, root_dir=root_dir, augment=True)
     val_ds   = ActionDataset(val_entries,   image_size=image_size, root_dir=root_dir, augment=False)
@@ -297,7 +297,7 @@ def train_model(
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total     = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {trainable:,} trainable / {total:,} total  "
-          f"({100 * trainable / total:.1f}% trainable)\n")
+          f"({100 * trainable / total:.1f}% trainable)/n")
 
     class_weights = compute_class_weights(train_labels).to(DEVICE)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
@@ -378,7 +378,7 @@ def train_model(
             f"val_loss={val_loss:.4f}  val_acc={val_acc:.3f}{tag}"
         )
 
-    print(f"\nBest validation accuracy: {best_val_acc:.3f}")
+    print(f"/nBest validation accuracy: {best_val_acc:.3f}")
     print(f"Model saved to: {output_path}")
     print(f"Total training time: {(time.time() - start) / 60:.1f} minutes")
     return model, history
@@ -416,7 +416,7 @@ def evaluate(
             all_preds.extend(logits.argmax(1).cpu().tolist())
             all_targets.extend(targets.tolist())
 
-    print("\n" + "=" * 60)
+    print("/n" + "=" * 60)
     print("CLASSIFICATION REPORT")
     print("=" * 60)
     print(classification_report(all_targets, all_preds, target_names=ACTION_LABELS))
@@ -622,7 +622,7 @@ def main():
             image_size=args.image_size,
             hidden_dim=args.hidden_dim,
         )
-        print(f"\nPredicted action : {result['action']}")
+        print(f"/nPredicted action : {result['action']}")
         print(f"Confidence       : {result['confidence']:.3f}")
         print("Probabilities    :")
         for action, prob in sorted(result["probabilities"].items(), key=lambda x: -x[1]):
@@ -648,8 +648,8 @@ python src/evaluation/llm.py train
 python src/evaluation/llm.py eval
 
 # Predecir una acción
-python src/evaluation/llm.py predict --screenshot src\metrics\agent_metrics\A7_screenshots\worldmodel_2026-02-15T15-58-38-838Z.png --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot src\metrics\example.png --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot src\metrics\example2.png --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot src\metrics\example3.png --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
+python src/evaluation/llm.py predict --screenshot "src/metrics/agent_metrics/A7_screenshots/worldmodel_2026-02-15T15-58-38-838Z.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
+python src/evaluation/llm.py predict --screenshot "src/metrics/example.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
+python src/evaluation/llm.py predict --screenshot "src/metrics/example2.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
+python src/evaluation/llm.py predict --screenshot "src/metrics/example3.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
 '''
