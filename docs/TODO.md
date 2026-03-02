@@ -30,18 +30,10 @@
 - [x] Aumentar el numero de accinoes:
   - [x] Movimiento de camara
   - [x] Todos los botones que podria usar el jugador, mas low-level que las accinoes basicas (aunque estas no se quitan)
-  
-## En Progreso
- - [ ] Limpiar y refactorizar
-  - [x] Agents
-  - [ ] Evaluations
-  - [x] HTN
-    - [x] Primitivas
-    - [x] Task
-    - [x] Progresion
-  - [x] Metrics
-  - [x] Server
+- [x] Hacer que el agente de refuerzo herede de base_agent
+- [x] Añadir limpieza de metricas y memorias al run.js
 
+## En Progreso
 - [ ] Analisis de entrenamiento
 
 ## Por Hacer
@@ -52,7 +44,9 @@
 - [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
 
 ---
-
+- [ ] ROBAR -> https://github.com/medipixel/rl_algorithms
+- [ ] Se puede hacer que el prismarine viewer haga un draw del movimiento del agente
+- [ ] openWindow solo se ejecuta una vez cuandod deberia ser como minumo 3(?) (inventario, crafting table, furnace)
 - [ ] Usar rl para talar madera (maybe crear un pico de madera, aunque seria redundante ya que son tareas "automaticas")
   - [ ] Quitar la omnisciencia, puede saber las coordenadas de los bloques que ve como muchisimo. Pero no debe saber donde esta
   el hierro por ejemplo. 
