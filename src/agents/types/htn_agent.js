@@ -42,8 +42,16 @@ export class HTNAgent extends BaseAgent {
             // Connect to Minecraft
             await this.connectBot(settings);
             
-            // Start metrics tracking
+            // Start metrics tracking with control tracking and screenshots
+            console.log(`[INFO] [${this.name}] Starting world tracking...`);
             this.metricsCollector.startWorldTracking(this.bot);
+            
+            console.log(`[INFO] [${this.name}] Calling startControlTracking with bot=${this.bot ? 'valid' : 'null'}, viewerPort=${viewerPort}...`);
+            try {
+                this.metricsCollector.startControlTracking(this.bot, 50, true, viewerPort);
+            } catch (err) {
+                console.error(`[ERROR] [${this.name}] Failed to start control tracking:`, err.message);
+            }
 
             // Setup viewer
             this.setupViewer(viewerPort);
@@ -209,6 +217,7 @@ export class HTNAgent extends BaseAgent {
         
         // Stop metrics tracking and close browser
         await this.metricsCollector.stopWorldTracking();
+        this.metricsCollector.stopControlTracking();
         
         // Disconnect from MindServer
         try {

@@ -95,6 +95,4 @@ llm/results/*
 llm/tasks/construction_tasks/test_multiagent_construction_tasks.json
 llm/tasks/construction_tasks/train_multiagent_construction_tasks.json
 llm/tasks/construction_tasks/test/**
-
-api_test/dataset/3/*
 src/evaluation/README_VAE.md

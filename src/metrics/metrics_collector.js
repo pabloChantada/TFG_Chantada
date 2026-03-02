@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import { ActionTracker } from './action_tracker.js';
+import { ControlTracker } from './control_tracker.js';
 
 export class MetricsCollector {
     constructor(agentName, agentType) {
@@ -23,6 +24,7 @@ export class MetricsCollector {
         this.page = null;
         this.screenshotQueue = Promise.resolve(null);
         this.actionQueue = Promise.resolve(null);
+        this.controlTracker = null; // Low-level control input tracker (includes camera data)
         
         this.metrics = {
             version: null,
@@ -34,17 +36,6 @@ export class MetricsCollector {
             end_time: null,
             time_elapsed_s: 0,
             steps_taken: 0,
-            exploration_distance: 0,
-            // Movements, actions, and observations for world model export
-            // The actions are minimal; i.e: mine, move, jump, etc.
-            // A list containing: {
-            //   x, y, z: floats, 
-            //   timestamp: date,
-            //   action: str,
-            //   success: bool
-            // }
-            world_model: [], 
-            action_counts: {}, // Count of each action performed
             errors: []
         };
     }
@@ -135,29 +126,7 @@ export class MetricsCollector {
         this.currentAction = null;
 
         this.actionQueue = this.actionQueue.then(async () => {
-            const completedAction = {
-                name: currentActionData.name,
-                success,
-                startTime: currentActionData.startTime,
-                endTime: new Date().toISOString(),
-                duration: (new Date() - new Date(currentActionData.startTime)) / 1000
-            };
-
-            const screenshotPath = await this._queueScreenshotCapture();
-
-            // Record action completion to world_model
-            this.metrics.world_model.push({
-                x: bot.entity.position.x,
-                y: bot.entity.position.y,
-                z: bot.entity.position.z,
-                action: completedAction,
-                timestamp: completedAction.endTime,
-                screenshot: screenshotPath
-            });
-            
-            // Count occurrences of this action
-            this.metrics.action_counts[currentActionData.name] = 
-                (this.metrics.action_counts[currentActionData.name] || 0) + 1;
+            // Actions are now tracked through control_sequence with full context
         });
 
         return this.actionQueue;
@@ -195,7 +164,7 @@ export class MetricsCollector {
      * Initialize metrics collection
      * @param {string} exportPath - Path to export metrics (file or directory)
      * @param {string} task - Task description
-     * @param {boolean} captureScreenshots - Enable viewer screenshots for world_model entries
+     * @param {boolean} captureScreenshots - Enable viewer screenshots for control state tracking
      * @param {number} viewerPort - Port for prismarine viewer
      */
     async initialize(exportPath, task, captureScreenshots = false, viewerPort = null) {
@@ -252,79 +221,106 @@ export class MetricsCollector {
     }
 
     /**
-     * Start tracking bot observations and movements
-     * Distinguishes between 'idle' (not moving) and actual actions being performed
+     * Start tracking low-level bot control inputs (WASD, jump, mine, etc.)
+     * @param {Object} bot - Mineflayer bot instance
+     * @param {number} pollInterval - How often to check state (ms, default 50ms)
+     * @param {boolean} captureScreenshots - Enable screenshot capture (requires viewerPort)
+     * @param {number} viewerPort - Port for prismarine viewer screenshots
+     */
+    startControlTracking(bot, pollInterval = 50, captureScreenshots = false, viewerPort = null) {
+        console.log(`[TRACE] startControlTracking called with bot=${bot ? 'valid' : 'null'}, interval=${pollInterval}, screenshots=${captureScreenshots}, viewer=${viewerPort}`);
+        
+        if (!bot) {
+            console.warn('[MetricsCollector] Cannot start control tracking: bot not provided');
+            return;
+        }
+
+        // Enable screenshots first if requested
+        if (captureScreenshots && viewerPort) {
+            console.log(`[INFO] [${this.agentName}] Enabling screenshots to viewer port ${viewerPort}`);
+            this.enableScreenshots(viewerPort);
+        }
+
+        console.log(`[INFO] [${this.agentName}] Initializing ControlTracker...`);
+        try {
+            // Pass 'this' (MetricsCollector) so ControlTracker can access screenshot methods
+            this.controlTracker = new ControlTracker(bot, this);
+            console.log(`[INFO] [${this.agentName}] ControlTracker instance created successfully`);
+            
+            this.controlTracker.start(pollInterval);
+            console.log(`[INFO] [${this.agentName}] ControlTracker.start() completed`);
+            
+            console.log(`[INFO] [${this.agentName}] Low-level control tracking started successfully`);
+        } catch (err) {
+            console.error(`[ERROR] [${this.agentName}] Failed to initialize ControlTracker:`, err);
+            console.error(`[ERROR] Stack trace:`, err.stack);
+            this.controlTracker = null;
+        }
+    }
+
+
+    /**
+     * Stop tracking low-level bot control inputs
+     * Note: Data remains accessible after stopping for analysis/export
+     */
+    stopControlTracking() {
+        if (this.controlTracker) {
+            this.controlTracker.stop();
+            // Don't set to null - keep data available for export/analysis
+        }
+    }
+
+    /**
+     * Get current control input states
+     * @returns {Object|null} Current state of all controls or null if not tracking
+     */
+    getControlStates() {
+        if (!this.controlTracker) return null;
+        return this.controlTracker.getAllControlStates();
+    }
+
+    /**
+     * Get control input history/sequence
+     * @param {number} limit - Maximum number of events to return
+     * @returns {Array|null} Recent control events or null if not tracking
+     */
+    getControlSequence(limit = null) {
+        if (!this.controlTracker) return null;
+        return this.controlTracker.getControlSequence(limit);
+    }
+
+    /**
+     * Get control input statistics
+     * @returns {Object|null} Control usage statistics or null if not tracking
+     */
+    getControlStats() {
+        if (!this.controlTracker) return null;
+        return this.controlTracker.getControlStats();
+    }
+
+    /**
+     * Enable screenshot capture for control tracking
+     * @param {number} viewerPort - Port for prismarine viewer
+     */
+    enableScreenshots(viewerPort) {
+        this.captureScreenshots = true;
+        this.viewerPort = viewerPort;
+        this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}_screenshots/`;
+        console.log(`[${this.agentName}] Screenshots enabled for control tracking`);
+    }
+
+    /**
+     * Start tracking bot observations and movements (deprecated - use startControlTracking instead)
+     * Kept for backwards compatibility
      * @param {Object} bot - Mineflayer bot instance
      * @param {number} samplingRate - Samples per second (default: 1)
      */
     startWorldTracking(bot, samplingRate = 1) {
         if (!bot) return;
 
-        // Start automatic action tracking alongside world tracking
+        // Start automatic action tracking alongside control tracking
         this.startActionTracking(bot, 100);
-
-        // Copy the initial position
-        this.lastPosition = bot.entity.position.clone();
-
-        const intervalMs = 1000 / samplingRate;
-        // More threshold than 0.05 can cause to always be considered as idle
-        const movementThreshold = 0.05; // Minimum distance to consider as "moving"
-
-        // Sample bot state at fixed intervals
-        this.trackingInterval = setInterval(async () => {
-            const currentPos = bot.entity.position;
-            // Obtain the traveled distance since last sample
-            const dist = this.lastPosition.distanceTo(currentPos);
-
-            this.metrics.exploration_distance += dist;
-
-            // Determine current action state
-            let actionState = 'idle';
-            if (this.currentAction) {
-                actionState = this.currentAction.name;
-            } else if (dist > movementThreshold) {
-                actionState = 'moving';
-            }
-
-            // Update last position after computing movement
-            this.lastPosition = currentPos.clone();
-            this.metrics.action_counts[actionState] = (this.metrics.action_counts[actionState] || 0) + 1;
-            
-            // Create action object
-            let actionObj = null;
-            // Right now we only use 'mine'
-            if (this.currentAction) {
-                actionObj = {
-                    name: this.currentAction.name,
-                    success: null,
-                    startTime: this.currentAction.startTime,
-                    endTime: null,
-                    duration: null
-                };
-            } else if (actionState === 'moving' || actionState === 'idle') {
-                actionObj = {
-                    name: actionState,
-                    success: undefined,
-                    startTime: null,
-                    endTime: null,
-                    duration: null
-                };
-            }
-            
-            const screenshotPath = await this._queueScreenshotCapture();
-
-            // Capture bot state
-            this.metrics.world_model.push({
-                x: currentPos.x,
-                y: currentPos.y,
-                z: currentPos.z,
-                action: actionObj,
-                timestamp: new Date().toISOString(),
-                screenshot: screenshotPath
-            });
-        }, intervalMs);
-
-        console.log(`[${this.agentName}] World tracking started at ${samplingRate} samples/second`);
+        console.log(`[${this.agentName}] World tracking started (use startControlTracking for low-level inputs)`);
     }
 
     /**
@@ -445,6 +441,14 @@ export class MetricsCollector {
             // Add th commit version as an ID of the metric
             if (bot && bot.entity && bot.inventory) {
                 await this.getVersion(bot);
+            }
+
+            // Wait for pending screenshots before exporting control tracking data
+            if (this.controlTracker) {
+                console.log(`[${this.agentName}] Waiting for pending screenshot captures...`);
+                await this.controlTracker.waitForPendingScreenshots();
+                console.log(`[${this.agentName}] All screenshots captured`);
+                this.metrics.control_tracking = this.controlTracker.exportControlData();
             }
 
             // Export JSON metrics

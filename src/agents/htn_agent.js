@@ -41,7 +41,16 @@ export class HTNAgent extends BaseAgent {
             await this.connectBot(settings);
             
             // Start metrics tracking
+            console.log(`[INFO] [${this.name}] Starting world tracking...`);
             this.metricsCollector.startWorldTracking(this.bot);
+            
+            console.log(`[INFO] [${this.name}] Starting control tracking with bot=${this.bot ? 'valid' : 'null'}, viewerPort=${viewerPort}`);
+            try {
+                this.metricsCollector.startControlTracking(this.bot, 50, true, viewerPort);
+            } catch (err) {
+                console.error(`[ERROR] [${this.name}] Failed to start control tracking:`, err.message);
+                console.error(err.stack);
+            }
 
             // Setup viewer
             this.setupViewer(viewerPort);

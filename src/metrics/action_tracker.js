@@ -202,7 +202,7 @@ export class ActionTracker {
         this.startInventoryCount = 0;
 
         // Log immediately (before awaiting metrics queue) for responsive feedback
-        console.log(`[ActionTracker] [${this.bot.username}] Action '${actionName}' ended (${duration.toFixed(2)}s, success: ${success})`);
+        // console.log(`[ActionTracker] [${this.bot.username}] Action '${actionName}' ended (${duration.toFixed(2)}s, success: ${success})`);
         
         await this.metrics.trackActionEnd(success, this.bot);
     }
