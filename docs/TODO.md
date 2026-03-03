@@ -45,6 +45,11 @@
 
 ---
 - [ ] ROBAR -> https://github.com/medipixel/rl_algorithms
+- eliminar sprint y solo hacer andar
+- mirar dataset
+- imitation learning con red convolucional
+- arreglar omnisciencia y agua
+
 - [ ] Se puede hacer que el prismarine viewer haga un draw del movimiento del agente
 - [ ] openWindow solo se ejecuta una vez cuandod deberia ser como minumo 3(?) (inventario, crafting table, furnace)
 - [ ] Usar rl para talar madera (maybe crear un pico de madera, aunque seria redundante ya que son tareas "automaticas")
