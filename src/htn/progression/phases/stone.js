@@ -35,7 +35,7 @@ async function phaseStone(bot, mcData) {
         }
     )
 
-    // Task 2: Craft 2 stone pickaxes (extra durability for non-omniscient exploration)
+    // Task 2: Craft 2 stone pickaxes (extra durability for exploration)
     await runSmartTask(
         bot, 
         'Craft Stone Pickaxes',

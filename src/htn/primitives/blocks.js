@@ -11,8 +11,8 @@ function getBlockId(mcData, blockName) {
 
 /**
  * Finds the nearest block of a given type within a specified distance.
- * Note: This is an omniscient search — it finds blocks even if buried underground.
- * Use findNearestVisibleBlock for a realistic, non-omniscient search.
+ * WARNING: This is an omniscient search — it finds blocks even if buried underground.
+ * DEPRECATED: Use findNearestVisibleBlock for realistic, non-omniscient search.
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
  * @param {string} blockName - The name of the block to find (e.g., "coal_ore").
@@ -38,7 +38,7 @@ function isBlockExposed(bot, blockPos) {
         [0, 1, 0], [0, -1, 0],
         [1, 0, 0], [-1, 0, 0],
         [0, 0, 1], [0, 0, -1],
-    ]
+    ] 
     for (const [dx, dy, dz] of offsets) {
         // Check neightbours blocks
         const neighbor = bot.blockAt(blockPos.offset(dx, dy, dz))

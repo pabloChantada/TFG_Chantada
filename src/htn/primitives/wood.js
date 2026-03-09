@@ -1,5 +1,6 @@
 import { getBiomeName } from './helpers.js'
 import { mineBlock } from './mining.js';
+import { findNearestVisibleBlock } from './blocks.js';
 
 // Some other types may be needed, for now we use these
 const biomeToWoodType = {
@@ -51,9 +52,9 @@ const plankToLog = Object.fromEntries(
 
 
 /**
- * Obtains the wood type based on the biome or nearby blocks.
- * If the biome is not mapped, it scans nearby blocks for any wood type.
- * If no wood is found, disconnect.
+ * Obtains the wood type based on the biome or nearby visible blocks.
+ * If the biome is not mapped, it searches for visible wood types (non-omniscient).
+ * If no visible wood is found, disconnect.
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
  * @returns {Promise<string>} - The wood type to use (e.g., "oak_log").
@@ -66,23 +67,28 @@ async function obtainWoodType(bot, mcData) {
     if (!woodType) {
         console.warn(`[Wood.js] Biome "${biome}" not mapped. Scanning surroundings...`);
         
-        // Check nearby block to obtain the wood type
-        const nearbyWood = bot.findBlock({
-            matching: (block) => {
-                const name = block.name;
-                // Find any block that ends with a wood suffix
-                return WOOD_SUFFIXES.some(suffix => name.endsWith(suffix));
-            },
-            maxDistance: 64
-        });
+        // Non-omniscient search: try each common wood type
+        // Prefer common types first (oak, spruce, birch)
+        const woodTypesToSearch = [
+            'oak_log', 'spruce_log', 'birch_log', 'jungle_log',
+            'acacia_log', 'dark_oak_log', 'mangrove_log', 'cherry_log',
+            'warped_stem', 'crimson_stem'
+        ];
+        
+        let nearbyWood = null;
+        for (const candidateType of woodTypesToSearch) {
+            nearbyWood = findNearestVisibleBlock(bot, mcData, candidateType, 64);
+            if (nearbyWood) {
+                woodType = candidateType;
+                break;
+            }
+        }
 
-        if (nearbyWood) {
-            woodType = nearbyWood.name;
-        } else {
+        if (!nearbyWood) {
             // Final fallback: oak 
-            console.warn(`[Wood.js] No wood found nearby. Disconnecting.`);
+            console.warn(`[Wood.js] No visible wood found nearby. Disconnecting.`);
             bot.end();
-            throw new Error(`No wood found nearby`);
+            throw new Error(`No visible wood found nearby`);
         }
     }
     return woodType;

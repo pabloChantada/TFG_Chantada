@@ -4,42 +4,59 @@ import { exploreRandom, exploreDown, moveToBlock } from './movement.js'
 
 import { getItemNameFromBlock } from './helpers.js'
 
-const WATER_BLOCK_NAME = 'water'
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function isWaterBlock(block) {
-    if (!block) return false
-    return block.name === WATER_BLOCK_NAME
+/**
+ * Checks if the bot is underwater by monitoring oxygen level.
+ * If oxygen level is below maximum (20), the bot is submerged.
+ * @param {Bot} bot - The mineflayer bot instance
+ * @returns {boolean} - True if the bot is underwater
+ */
+function isBotSubmerged(bot) {
+    return bot.oxygenLevel < 20
 }
 
+/**
+ * Checks if a target block is underwater by attempting to approach it
+ * and monitoring if oxygen level starts decreasing.
+ * @param {Bot} bot - The mineflayer bot instance
+ * @param {Block} block - The target block to check
+ * @returns {boolean} - True if approaching the block causes oxygen loss
+ */
 function isUnderwaterTarget(bot, block) {
     if (!block) return false
-    const above = bot.blockAt(block.position.offset(0, 1, 0))
-    const same = bot.blockAt(block.position)
-    return isWaterBlock(same) || isWaterBlock(above)
+    // If bot is already underwater, the target is likely underwater too
+    return isBotSubmerged(bot)
 }
 
-function isBotSubmerged(bot) {
-    const feet = bot.blockAt(bot.entity.position.floored())
-    const head = bot.blockAt(bot.entity.position.offset(0, 1, 0).floored())
-    return isWaterBlock(feet) || isWaterBlock(head)
-}
-
+/**
+ * Attempts to recover from underwater situation by surfacing.
+ * Monitors oxygen level and jumps until oxygen returns to maximum (20).
+ * @param {Bot} bot - The mineflayer bot instance
+ * @param {number} timeout - Maximum time to attempt recovery (default 6000ms)
+ * @returns {Promise<boolean>} - True if successfully surfaced, false if timeout
+ */
 async function recoverFromWater(bot, timeout = 6000) {
     if (!isBotSubmerged(bot)) return true
 
     const start = Date.now()
+    console.log(`[recoverFromWater] Oxygen level: ${bot.oxygenLevel}/20. Attempting to surface...`)
+    
     bot.setControlState('jump', true)
 
     try {
         while (Date.now() - start < timeout) {
-            if (!isBotSubmerged(bot)) return true
+            // Check if we've reached the surface (oxygen back to maximum)
+            if (bot.oxygenLevel === 20) {
+                console.log(`[recoverFromWater] Successfully surfaced!`)
+                return true
+            }
             await sleep(150)
         }
-        return !isBotSubmerged(bot)
+        console.warn(`[recoverFromWater] Timeout - still underwater (oxygen: ${bot.oxygenLevel}/20)`)
+        return false
     } finally {
         bot.setControlState('jump', false)
     }
@@ -62,7 +79,7 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
     // If not, return the blockName as the itemName
     const itemName = getItemNameFromBlock(blockName)
     const startTime = Date.now()
-    const MAX_TIME_MS = 180000 // 3 minutes (non-omniscient exploration needs more time)
+    const MAX_TIME_MS = 180000 // 3 minutes (exploration needs more time)
     
     let attempts = 0
     let notFoundCount = 0
@@ -83,7 +100,7 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
         
         if (ore) {
             if (isUnderwaterTarget(bot, ore)) {
-                console.warn(`[mineBlock] Skipping ${blockName} at ${ore.position} (underwater target)`)
+                console.warn(`[mineBlock] Underwater detected (oxygen: ${bot.oxygenLevel}/20). Skipping ${blockName} and exploring elsewhere...`)
                 await exploreRandom(bot, 24)
                 attempts++
                 continue

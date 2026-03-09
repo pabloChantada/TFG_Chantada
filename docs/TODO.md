@@ -33,6 +33,7 @@
 - [x] Hacer que el agente de refuerzo herede de base_agent
 - [x] Añadir limpieza de metricas y memorias al run.js
 - [x] Manejo robusto de agua
+- [x] Arreglar omnisciencia y agua
 
 ## En Progreso
 - [ ] Analisis de entrenamiento
@@ -44,11 +45,10 @@
 - [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
 
 ---
-- [ ] ROBAR -> https://github.com/medipixel/rl_algorithms
+
 - eliminar sprint y solo hacer andar
 - mirar dataset
 - imitation learning con red convolucional
-- arreglar omnisciencia y agua
 
 - [ ] Se puede hacer que el prismarine viewer haga un draw del movimiento del agente
 - [ ] openWindow solo se ejecuta una vez cuandod deberia ser como minumo 3(?) (inventario, crafting table, furnace)
