@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import Vec3 from 'vec3'
-import { getBlockId } from './inventory.js'
+import { getBlockId } from './blocks.js'
 
 /**
  * Gets the memory file path for a bot

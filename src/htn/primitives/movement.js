@@ -81,7 +81,48 @@ async function exploreRandom(bot, distance = 30, timeout = 10000) {
     }
 }
 
+/**
+ * Explores underground by navigating to a lower Y level.
+ * With canDig=true on the pathfinder, the bot will mine through blocks to create a path,
+ * which naturally exposes ores in the walls of the tunnels it digs.
+ * @param {Bot} bot - The mineflayer bot instance.
+ * @param {number} targetY - Target Y level to reach (default 16, good for iron/coal).
+ * @param {number} timeout - Maximum time in ms (default 30000).
+ * @returns {Promise<void>}
+ */
+async function exploreDown(bot, targetY = 16, timeout = 30000) {
+    const currentY = Math.floor(bot.entity.position.y)
+    if (currentY <= targetY + 5) {
+        // Already near the target depth, explore horizontally to expose more blocks
+        await exploreRandom(bot, 30)
+        return
+    }
+
+    console.log(`[exploreDown] Digging from Y=${currentY} to Y=${targetY}...`)
+    const startPos = bot.entity.position.clone()
+
+    try {
+        const movePromise = bot.pathfinder.goto(new goals.GoalY(targetY))
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Underground exploration timeout')), timeout)
+        )
+
+        await Promise.race([movePromise, timeoutPromise])
+        console.log(`[exploreDown] Reached Y=${Math.floor(bot.entity.position.y)}`)
+    } catch (e) {
+        const movedDown = startPos.y - bot.entity.position.y
+        if (movedDown > 5) {
+            console.warn(`[exploreDown] Partial descent: ${movedDown.toFixed(1)} blocks down (now Y=${Math.floor(bot.entity.position.y)})`)
+            return
+        }
+        console.warn(`[exploreDown] Failed to dig down: ${e.message}`)
+        // Fall back to horizontal exploration
+        await exploreRandom(bot, 20)
+    }
+}
+
 export {
     moveToBlock,
-    exploreRandom
+    exploreRandom,
+    exploreDown
 }

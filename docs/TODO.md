@@ -32,6 +32,7 @@
   - [x] Todos los botones que podria usar el jugador, mas low-level que las accinoes basicas (aunque estas no se quitan)
 - [x] Hacer que el agente de refuerzo herede de base_agent
 - [x] Añadir limpieza de metricas y memorias al run.js
+- [x] Manejo robusto de agua
 
 ## En Progreso
 - [ ] Analisis de entrenamiento
@@ -39,7 +40,6 @@
 ## Por Hacer
 - [ ] Comunicación multiagente para replanificación
 - [ ] Recipes no hardcoded (planificador recursivo/crafting graph)
-- [ ] Manejo robusto de agua
 - [ ] Automatizar creacion de mundos
 - [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
 
@@ -53,10 +53,8 @@
 - [ ] Se puede hacer que el prismarine viewer haga un draw del movimiento del agente
 - [ ] openWindow solo se ejecuta una vez cuandod deberia ser como minumo 3(?) (inventario, crafting table, furnace)
 - [ ] Usar rl para talar madera (maybe crear un pico de madera, aunque seria redundante ya que son tareas "automaticas")
-  - [ ] Quitar la omnisciencia, puede saber las coordenadas de los bloques que ve como muchisimo. Pero no debe saber donde esta
-  el hierro por ejemplo. 
+  - [x] Quitar la omnisciencia, puede saber las coordenadas de los bloques que ve como muchisimo. Pero no debe saber donde esta el hierro por ejemplo. 
 
 ## Notas Técnicas
-- Prioridad: mejor exploración y condiciones de salida claras en recolección de materias primas
-- Mundo de cuevas multiagente: maximizar minería de ores con exploración coordinada. Mundo de cuevas -> varios agentes -> maximizar la mineria de ores
-- Manejo de agua en movimiento
+- Mundo de cuevas multiagente: maximizar minería de ores con exploración coordinada. 
+  - Mundo de cuevas -> varios agentes -> maximizar la mineria de ores

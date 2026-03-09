@@ -18,6 +18,8 @@ export async function startHTN(bot) {
     const defaultMove = new Movements(bot, mcData)
     defaultMove.canDig = true
     defaultMove.dontMineUnderFallingBlock = false 
+    // Strongly discourage routes through water during progression tasks.
+    defaultMove.liquidCost = 20
     bot.pathfinder.setMovements(defaultMove)
     
     // Limit pathfinder computation to prevent event loop blocking (keepalive timeout)

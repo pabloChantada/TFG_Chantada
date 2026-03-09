@@ -8,7 +8,7 @@ import { ensureEquipped } from '../recovery.js'
 import { exploreRandom } from '../../primitives/movement.js'
 
 async function phaseStone(bot, mcData) {
-    // Task 1: Mine stone
+    // Task 1: Mine stone (extra cobblestone for 2 stone pickaxes: 6 cobble + 8 for furnace = 14)
     await runSmartTask(
         bot,
         'Mine Stone',
@@ -35,15 +35,18 @@ async function phaseStone(bot, mcData) {
         }
     )
 
-    // Task 2: Craft stone pickaxe
+    // Task 2: Craft 2 stone pickaxes (extra durability for non-omniscient exploration)
     await runSmartTask(
         bot, 
-        'Craft Stone Pickaxe',
-        async () => hasItem(bot, mcData, 'stone_pickaxe'),
+        'Craft Stone Pickaxes',
+        async () => {
+            const pickaxeId = getItemId(mcData, 'stone_pickaxe')
+            return pickaxeId && bot.inventory.count(pickaxeId) >= 2
+        },
         async () => {
             await ensureCraftingTable(bot, mcData)
-            if (!hasItem(bot, mcData, 'stick', 2)) await craftItem(bot, mcData, 'stick', 1)
-            await craftItem(bot, mcData, 'stone_pickaxe', 1)
+            if (!hasItem(bot, mcData, 'stick', 4)) await craftItem(bot, mcData, 'stick', 2)
+            await craftItem(bot, mcData, 'stone_pickaxe', 2)
         },
         null,
         { exploreOnFail: false }

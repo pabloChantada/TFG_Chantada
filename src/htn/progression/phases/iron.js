@@ -1,6 +1,7 @@
 import { getBotLabel } from '../utils.js'
 import { runSmartTask } from '../smart_task.js'
-import { hasItem, getItemId } from '../../primitives/inventory.js'
+import { hasItem } from '../../primitives/inventory.js'
+import { getBlockId } from '../../primitives/blocks.js'
 import { mineBlock } from '../../primitives/mining.js'
 import { craftItem } from '../../tasks/crafting.js'
 import { ensureCraftingTable } from '../../tasks/block_placement.js'
@@ -33,7 +34,13 @@ async function phaseIron(bot, mcData) {
         'Mine Coal',
         async () => hasItem(bot, mcData, 'coal', 3),
         async () => {
-            await ensureEquipped(bot, mcData, 'stone_pickaxe') 
+            await ensureEquipped(bot, mcData, 'stone_pickaxe', async () => {
+                if (!hasItem(bot, mcData, 'cobblestone', 3)) {
+                    console.log(`[REPLAN] [${getBotLabel(bot)}] I need stone for a new stone pickaxe.`)
+                    await ensureEquipped(bot, mcData, 'wooden_pickaxe')
+                    await mineBlock(bot, mcData, 'stone', 3)
+                }
+            })
             await mineBlock(bot, mcData, 'coal_ore', 3)
         }
     )
@@ -64,7 +71,7 @@ async function phaseIron(bot, mcData) {
                 clearFurnaceMemory(bot)
                 
                 const oldFurnace = bot.findBlock({
-                    matching: getItemId(mcData, 'furnace'),
+                    matching: getBlockId(mcData, 'furnace'),
                     maxDistance: 32
                 })
                 

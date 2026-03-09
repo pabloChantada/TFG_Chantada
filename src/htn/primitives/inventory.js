@@ -21,17 +21,6 @@ function getItemId(mcData, itemName) {
     return mcData.itemsByName[itemName]?.id
 }
 
-/** 
- * Gets the block ID for a given block name using the minecraft data.
- * @param {Object} mcData - The minecraft data for the bot's version.
- * @param {string} blockName - The name of the block (e.g., "coal_ore").
- * @returns {number|null} - The block ID if found, or null if not found.
- * Note: This function is used in mining tasks to find ores in the world.
- */
-function getBlockId(mcData, blockName) {
-    return mcData.blocksByName[blockName]?.id
-}
-
 /**
  * Clears the bot's inventory by tossing all items.
  * @param {Bot} bot - The mineflayer bot instance.
@@ -42,24 +31,8 @@ async function clearInventory(bot) {
     for (const item of items) await bot.toss(item.type, null, item.count)
 }
 
-/**
- * Finds the nearest block of a given type within a specified distance.
- * @param {Bot} bot - The mineflayer bot instance.
- * @param {Object} mcData - The minecraft data for the bot's version.
- * @param {string} blockName - The name of the block to find (e.g., "coal_ore").
- * @param {number} maxDistance - The maximum distance to search for the block (default is 32).
- * @returns {Block|null} - The nearest block if found, or null if not found.
- */
-function findNearestBlock(bot, mcData, blockName, maxDistance = 32) {
-    const blockId = getBlockId(mcData, blockName)
-    if (!blockId) return null
-    return bot.findBlock({ matching: blockId, maxDistance })
-}
-
 export {
     hasItem,
     getItemId,
-    getBlockId,
-    clearInventory,
-    findNearestBlock
+    clearInventory
 }
