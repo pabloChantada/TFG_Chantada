@@ -43,7 +43,7 @@
 - [ ] Recipes no hardcoded (planificador recursivo/crafting graph)
 - [ ] Automatizar creacion de mundos
 - [ ] Probar autoencoder sin decoder VS solo autoencoder -> Para las acciones
-
+- [ ] Añadir nombres aleatorios para los agentes en run.js, con un hash deberia servir 
 ---
 
 - eliminar sprint y solo hacer andar

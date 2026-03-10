@@ -20,6 +20,8 @@
 import { spawn } from 'child_process';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import fs from 'fs';
+import path from 'path';
 
 const args = yargs(hideBin(process.argv))
     .option('agents', {
@@ -48,11 +50,13 @@ const args = yargs(hideBin(process.argv))
     })
     .option('metrics-clean', {
         type: 'boolean',
+        alias: 'mc',
         description: 'Clean metrics directory before running',
-        default: false
+        default: true
     })
     .option('memory-clean', {
         type: 'boolean',
+        alias: 'm',
         description: 'Clean agent memory before running',
         default: true
     })
@@ -60,6 +64,7 @@ const args = yargs(hideBin(process.argv))
     .example('node run.js --agents htn --names Bot1', 'Launch single HTN agent')
     .example('node run.js --agents htn,htn --names Bot1,Bot2', 'Launch 2 HTN agents')
     .example('node run.js -n Bot1 -t htn --metrics-clean', 'Launch HTN agent with clean metrics')
+    .example('node run.js -n Bot1 -t htn --memory-clean', 'Launch HTN agent with clean memory')
     .parse();
 
 const agentTypes = args.agents.split(',').map(s => s.trim());
@@ -70,6 +75,28 @@ const agentNames = args.names
 if (agentTypes.length !== agentNames.length) {
     console.error('Error: Number of agent types must match number of names');
     process.exit(1);
+}
+
+if (args['metrics-clean']) {
+    console.log('[INFO] Cleaning metrics directory...');
+    const metricsDir = path.join(process.cwd(), 'src', 'metrics', 'agent_metrics');
+    if (fs.existsSync(metricsDir)) {
+        fs.rmSync(metricsDir, { recursive: true, force: true });
+        fs.mkdirSync(metricsDir, { recursive: true });
+    }
+}
+
+if (args['memory-clean']) {
+    console.log('[INFO] Cleaning agent memory...');
+    const memoryDir = path.join(process.cwd(), 'src', 'agents', 'memories');
+    if (fs.existsSync(memoryDir)) {
+        const files = fs.readdirSync(memoryDir);
+        files.forEach(file => {
+            if (file.endsWith('.json')) {
+                fs.unlinkSync(path.join(memoryDir, file));
+            }
+        });
+    }
 }
 
 console.log(`[INFO] Launching ${agentTypes.length} agent(s)...\n`);
@@ -88,7 +115,6 @@ for (let i = 0; i < agentTypes.length; i++) {
         '--minecraft-port', String(args['minecraft-port']),
         '--viewer-port', String(viewerPort),
         '--metrics-path', args['metrics-path'].replace('${agentName}', agentName),
-        
     ];
 
     console.log(`[INFO] Agent ${i + 1}/${agentTypes.length}: ${agentName} (${agentType}) on port ${viewerPort}`);
