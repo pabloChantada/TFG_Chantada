@@ -117,6 +117,16 @@ export class ControlTracker {
     }
 
     /**
+     * Full cleanup - release all references to allow garbage collection
+     */
+    dispose() {
+        this.stop()
+        this.resetSequence()
+        this.bot = null
+        this.metrics = null
+    }
+
+    /**
      * Track a named high-level action (called by HTN primitives)
      */
     trackAction(actionName) {

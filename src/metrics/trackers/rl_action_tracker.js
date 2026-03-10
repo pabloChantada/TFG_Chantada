@@ -17,6 +17,7 @@
  */
 
 import { getBotPosition } from '../utils.js'
+import { extractState } from '../../rl/state.js'
 
 export class RLActionTracker {
     constructor(bot, cameraTracker, metricsCollector = null) {
@@ -24,7 +25,7 @@ export class RLActionTracker {
         this.cameraTracker = cameraTracker
         this.metrics = metricsCollector
         this.actionSequence = []
-        this.maxSequenceLength = 10000
+        this.maxSequenceLength = 5000
         
         // Current action state (what will be encoded as the current action vector)
         this.currentAction = this.getEmptyAction()
@@ -239,9 +240,10 @@ export class RLActionTracker {
         const now = Date.now()
         
         // Avoid recording identical actions too frequently
+        // Use direct value comparison instead of JSON.stringify to reduce GC pressure
         if (this.lastRecordedAction && 
-            JSON.stringify(this.currentAction) === JSON.stringify(this.lastRecordedAction.action) &&
-            (now - this.lastRecordedAction.timestamp) < this.recordThrottle) {
+            this._actionsEqual(this.currentAction, this.lastRecordedAction.action) &&
+            (now - this.lastRecordedAction._ts) < this.recordThrottle) {
             return null
         }
 
@@ -257,7 +259,16 @@ export class RLActionTracker {
         }
 
         const orientation = this.cameraTracker.getCurrentOrientation()
-        
+
+        // Extract the full 13-dim state vector for richer offline training data
+        let stateVector = null
+        try {
+            const stateResult = extractState(this.bot)
+            stateVector = stateResult.vector
+        } catch (_) {
+            // Fallback: state extraction may fail if bot is partially disconnected
+        }
+
         const actionRecord = {
             timestamp: new Date().toISOString(),
             position: getBotPosition(this.bot),
@@ -265,11 +276,14 @@ export class RLActionTracker {
                 yaw: orientation.yaw,
                 pitch: orientation.pitch
             } : null,
+            state_vector: stateVector,
             action: { ...this.currentAction },
             screenshot: screenshotPath,
         }
 
         this.actionSequence.push(actionRecord)
+        // Store numeric timestamp for efficient throttle comparison
+        actionRecord._ts = now
         this.lastRecordedAction = actionRecord
         this.capturedCount++
 
@@ -284,6 +298,24 @@ export class RLActionTracker {
         }
 
         return actionRecord
+    }
+
+    /**
+     * Compare two action objects without JSON.stringify (reduces GC pressure)
+     */
+    _actionsEqual(a, b) {
+        if (!a || !b) return false
+        return a.move_forward === b.move_forward &&
+               a.move_backward === b.move_backward &&
+               a.move_lateral === b.move_lateral &&
+               a.move_vertical === b.move_vertical &&
+               a.camera_yaw === b.camera_yaw &&
+               a.camera_pitch === b.camera_pitch &&
+               a.attack === b.attack &&
+               a.craft === b.craft &&
+               a.smelt === b.smelt &&
+               a.place === b.place &&
+               a.equip === b.equip
     }
 
     /**
@@ -351,6 +383,11 @@ export class RLActionTracker {
         const filteredSequence = requireScreenshots
             ? actionSequence.filter(record => Boolean(record.screenshot))
             : actionSequence
+
+        // Strip internal _ts property before export
+        for (const record of filteredSequence) {
+            delete record._ts
+        }
 
         const dropped = actionSequence.length - filteredSequence.length
         if (dropped > 0) {

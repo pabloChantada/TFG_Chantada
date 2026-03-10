@@ -10,7 +10,7 @@ export class EventRecorder {
         this.bot = bot
         this.cameraTracker = cameraTracker
         this.controlSequence = []
-        this.maxSequenceLength = 5000
+        this.maxSequenceLength = 3000
     }
 
     /**

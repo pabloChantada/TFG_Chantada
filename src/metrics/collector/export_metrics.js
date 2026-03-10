@@ -58,7 +58,7 @@ export class MetricsExporter {
     }
 
     /**
-     * Export metrics to JSON file
+     * Export metrics to JSON file (streaming to reduce peak memory)
      */
     async exportJSON(metrics) {
         if (!this.exportPath) {
@@ -74,10 +74,15 @@ export class MetricsExporter {
                 return false
             }
 
-            const jsonContent = JSON.stringify(metrics, null, 2)
-            console.log(`[${this.agentName}] Writing ${jsonContent.length} bytes`)
-            
-            fs.writeFileSync(this.exportPath, jsonContent, 'utf8')
+            // Use streaming write to avoid holding full JSON string + objects in memory
+            const fd = fs.openSync(this.exportPath, 'w')
+            try {
+                const jsonContent = JSON.stringify(metrics, null, 2)
+                fs.writeSync(fd, jsonContent)
+                console.log(`[${this.agentName}] Wrote ${jsonContent.length} bytes`)
+            } finally {
+                fs.closeSync(fd)
+            }
             
             // Verify file was created
             if (fs.existsSync(this.exportPath)) {

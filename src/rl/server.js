@@ -30,6 +30,7 @@ function getArg(name, fallback) {
 const SERVER_PORT = parseInt(getArg('port', '3001'))
 const MC_HOST = getArg('mc_host', 'localhost')
 const MC_PORT = parseInt(getArg('mc_port', '55916'))
+const MC_VERSION = getArg('mc_version', '1.20.1')
 const TARGET_LOGS = parseInt(getArg('target_logs', '5'))
 const MAX_STEPS = parseInt(getArg('max_steps', '1000'))
 const TICKS_PER_STEP = parseInt(getArg('ticks_per_step', '3'))
@@ -52,7 +53,7 @@ function createMineflayerBot() {
             host: MC_HOST,
             port: MC_PORT,
             username: BOT_NAME,
-            version: '1.20.4',
+            version: MC_VERSION,
         })
 
         b.loadPlugin(pathfinderPlugin)
@@ -121,8 +122,17 @@ async function handleRequest(req, res) {
         // ── POST /reset ──
         if (method === 'POST' && url.pathname === '/reset') {
             if (!bot) {
-                bot = await createMineflayerBot()
-                ready = true
+                try {
+                    bot = await createMineflayerBot()
+                    ready = true
+                } catch (err) {
+                    bot = null
+                    ready = false
+                    return send(res, 500, {
+                        error: `Bot spawn failed: ${err.message}`,
+                        hint: `Check Minecraft is open to LAN at ${MC_HOST}:${MC_PORT} and mc_version (${MC_VERSION}) matches the world version.`,
+                    })
+                }
             }
 
             await releaseAllControls(bot)
@@ -244,6 +254,7 @@ server.listen(SERVER_PORT, () => {
     console.log('='.repeat(50))
     console.log(`RL Server listening on http://localhost:${SERVER_PORT}`)
     console.log(`Minecraft: ${MC_HOST}:${MC_PORT}`)
+    console.log(`MC Version: ${MC_VERSION}`)
     console.log(`Target logs: ${TARGET_LOGS} | Max steps: ${MAX_STEPS}`)
     console.log('='.repeat(50))
     console.log('Endpoints:')

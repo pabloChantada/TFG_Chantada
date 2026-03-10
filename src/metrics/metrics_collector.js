@@ -204,9 +204,20 @@ export class MetricsCollector {
     }
 
     /**
-     * Record an error
+     * Record an error (capped at 100 to prevent unbounded growth)
      */
     recordError(errorMessage) {
+        if (this.metrics.errors.length >= 100) {
+            // Keep first 50 and last 49, add overflow marker
+            if (!this.metrics.errors._truncated) {
+                const first = this.metrics.errors.slice(0, 50)
+                const last = this.metrics.errors.slice(-49)
+                this.metrics.errors = [...first, { message: `... ${this.metrics.errors.length - 99} errors truncated ...`, timestamp: new Date().toISOString() }, ...last]
+                this.metrics.errors._truncated = true
+            } else {
+                this.metrics.errors.pop() // remove last before adding new
+            }
+        }
         this.metrics.errors.push({
             message: errorMessage,
             timestamp: new Date().toISOString()
@@ -216,6 +227,18 @@ export class MetricsCollector {
     // =========================================================================
     // --- EXPORT
     // =========================================================================
+
+    /**
+     * Free tracker memory after export to prevent accumulation
+     */
+    _freeTrackerMemory() {
+        if (this.controlTracker) {
+            this.controlTracker.resetSequence()
+        }
+        // Clear control_tracking from metrics (already exported)
+        delete this.metrics.control_tracking
+        console.log(`[${this.agentName}] Tracker memory freed`)
+    }
 
     /**
      * Get current metrics snapshot
@@ -275,6 +298,9 @@ export class MetricsCollector {
             } catch (err) {
                 console.warn(`[${this.agentName}] Screenshot cleanup failed: ${err.message}`)
             }
+
+            // Free tracker memory after successful export
+            this._freeTrackerMemory()
             
             console.log(`[${this.agentName}] ========== METRICS EXPORT COMPLETE ==========`)
 

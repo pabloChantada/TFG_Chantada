@@ -61,6 +61,7 @@ class MinecraftWoodEnv(gym.Env):
         super().__init__()
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
+        self.timeout_penalty = -1.0
 
         # Spaces
         self.action_space = spaces.MultiDiscrete(ACTION_DIMS)
@@ -69,6 +70,7 @@ class MinecraftWoodEnv(gym.Env):
         )
 
         self._step_count = 0
+        self._last_obs = np.zeros(OBS_DIM, dtype=np.float32)
 
     # ──────────────────────────────────────────────────────────────────────
     # Gym API
@@ -80,11 +82,32 @@ class MinecraftWoodEnv(gym.Env):
         obs = np.array(data["observation"], dtype=np.float32)
         info = data.get("info", {})
         self._step_count = 0
+        self._last_obs = obs
         return obs, info
 
     def step(self, action):
         action_list = [int(a) for a in action]
-        data = self._post("/step", {"action": action_list})
+        try:
+            data = self._post("/step", {"action": action_list})
+        except requests.exceptions.RequestException as exc:
+            # Prevent training crash on transient server stalls/timeouts.
+            # We truncate current episode and keep training moving.
+            info = {
+                "error": str(exc),
+                "step_timeout": True,
+                "step": self._step_count,
+            }
+
+            try:
+                obs, state_info = self.get_state()
+                info.update({"recovered_state": True, "state_info": state_info})
+            except requests.exceptions.RequestException:
+                obs = self._last_obs.copy()
+                info["recovered_state"] = False
+
+            self._step_count += 1
+            self._last_obs = obs
+            return obs, float(self.timeout_penalty), False, True, info
 
         obs = np.array(data["observation"], dtype=np.float32)
         reward = float(data["reward"])
@@ -93,6 +116,7 @@ class MinecraftWoodEnv(gym.Env):
         info = data.get("info", {})
 
         self._step_count += 1
+        self._last_obs = obs
         return obs, reward, terminated, truncated, info
 
     def close(self):

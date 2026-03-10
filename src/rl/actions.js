@@ -22,16 +22,6 @@
 /** Number of discrete choices per dimension */
 export const ACTION_SPACE = [3, 2, 3, 3, 5, 5, 2, 7, 2, 4, 5]
 
-/** Kept for backward-compat with environment.js / agent.js */
-export const NUM_ACTIONS = ACTION_SPACE.reduce((a, b) => a + b, 0)
-
-/** Human-readable dimension names */
-export const ACTION_NAMES = [
-    'move_forward', 'move_backward', 'move_lateral', 'move_vertical',
-    'camera_yaw', 'camera_pitch', 'attack',
-    'craft', 'smelt', 'place', 'equip'
-]
-
 // Camera step sizes (degrees → radians)
 const DEG15 = (15 * Math.PI) / 180
 const DEG45 = (45 * Math.PI) / 180
@@ -122,17 +112,6 @@ export async function applyMultiDiscreteAction(bot, action) {
     if (equip > 0 && equip < EQUIP_ITEMS.length) {
         await tryEquip(bot, EQUIP_ITEMS[equip])
     }
-}
-
-// ─── Legacy adapter: convert old flat action index to multi-discrete ────────
-// Only used if run_wood_rl.js hasn't been updated yet.
-export async function applyAction(bot, actionIndex) {
-    // Simplified: just move forward + mine for legacy callers
-    const action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    if (actionIndex === 1) action[0] = 1      // forward
-    else if (actionIndex === 6) action[6] = 1  // mine
-    else if (actionIndex === 7) { action[0] = 1; action[6] = 1 } // forward+mine
-    await applyMultiDiscreteAction(bot, action)
 }
 
 /**

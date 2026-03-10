@@ -121,11 +121,18 @@ export class ScreenshotManager {
 
             return filePath
         } catch (error) {
-            // If the browser died, stop trying
+            // If the browser died, clean up properly and stop trying
             if (error.message.includes('Target closed') ||
-                error.message.includes('Execution context was destroyed')) {
+                error.message.includes('Execution context was destroyed') ||
+                error.message.includes('Protocol error') ||
+                error.message.includes('Session closed')) {
+                try {
+                    if (this.browser) await this.browser.close().catch(() => {})
+                } catch (_) { /* ignore */ }
                 this.browser = null
                 this.page = null
+                this.enabled = false
+                console.warn(`[${this.agentName}] Screenshot browser died, disabling captures`)
             }
             return null
         }
@@ -215,7 +222,15 @@ export class ScreenshotManager {
         this._closed = true
         this.enabled = false
         if (this.browser) {
-            await this.browser.close()
+            try {
+                // Kill the browser process to ensure Chromium doesn't linger
+                const proc = this.browser.process()
+                await this.browser.close().catch(() => {})
+                // Force-kill if still alive after close
+                if (proc && !proc.killed) {
+                    proc.kill('SIGKILL')
+                }
+            } catch (_) { /* ignore cleanup errors */ }
             this.browser = null
             this.page = null
         }

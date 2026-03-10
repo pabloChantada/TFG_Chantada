@@ -47,7 +47,7 @@ export function getLogCount(bot) {
  *   [4]  pitch (normalized to [-1, 1])
  *   [5]  log_count in inventory
  *   [6]  is_looking_at_log (0 or 1)
- *   [7]  looking_at_block_hardness (0 if air/nothing)
+ *   [7]  looking_at_block_hardness (0 if air/nothing), 2 for logs
  *   [8]  is_on_ground (0 or 1)
  *   [9]  health
  *   [10] food_level

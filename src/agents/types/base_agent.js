@@ -141,11 +141,26 @@ export class BaseAgent {
     async shutdown() {
         if (this.bot) {
             logInfo(this.name, `Shutting down...`);
+
+            // Close prismarine-viewer server to free port and memory
+            if (this.viewerInitialized) {
+                try {
+                    if (this.bot.viewer) {
+                        this.bot.viewer.close();
+                        logInfo(this.name, `Viewer server closed`);
+                    }
+                } catch (error) {
+                    logError(this.name, new Error(`Error closing viewer: ${error.message}`));
+                }
+                this.viewerInitialized = false;
+            }
+
             try {
                 this.bot.quit();
             } catch (error) {
                 logError(this.name, new Error(`Error during shutdown: ${error.message}`));
             }
+            this.bot = null;
         }
     }
 

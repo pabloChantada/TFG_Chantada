@@ -98,24 +98,29 @@ export class HTNAgent extends BaseAgent {
      * Setup bot error and disconnect handlers
      */
     _setupBotErrorHandlers() {
-        this.bot.on('error', (err) => {
+        // Store references so we can remove them on shutdown
+        this._onError = (err) => {
             logError(this.name, new Error(`Bot error: ${err.message}`));
             this.metricsCollector.recordError(`Bot error: ${err.message}`);
             this._handleBotDisconnect();
-        });
+        };
 
-        this.bot.on('kicked', (reason) => {
+        this._onKicked = (reason) => {
             logError(this.name, new Error(`Bot kicked: ${reason}`));
             this.metricsCollector.recordError(`Bot kicked: ${reason}`);
             this._handleBotDisconnect();
-        });
+        };
 
-        this.bot.on('end', (reason) => {
+        this._onEnd = (reason) => {
             console.warn(`[WARN] [${this.name}] Bot connection ended: ${reason}`);
             this.metricsCollector.stopControlTracking();
             // Stop new screenshot captures (existing queue will finish)
             this.metricsCollector.stopScreenshots();
-        });
+        };
+
+        this.bot.on('error', this._onError);
+        this.bot.on('kicked', this._onKicked);
+        this.bot.on('end', this._onEnd);
     }
 
     /**
@@ -196,6 +201,7 @@ export class HTNAgent extends BaseAgent {
     async shutdown() {
         logInfo(this.name, `Shutting down HTN agent...`);
         this._stopTracking();
+        this._removeBotErrorHandlers();
         await super.shutdown();
         logInfo(this.name, `Shutdown complete`);
     }
@@ -205,5 +211,19 @@ export class HTNAgent extends BaseAgent {
      */
     _stopTracking() {
         this.metricsCollector.stopControlTracking();
+    }
+
+    /**
+     * Remove bot event listeners to prevent memory leaks
+     */
+    _removeBotErrorHandlers() {
+        if (this.bot) {
+            if (this._onError) this.bot.removeListener('error', this._onError);
+            if (this._onKicked) this.bot.removeListener('kicked', this._onKicked);
+            if (this._onEnd) this.bot.removeListener('end', this._onEnd);
+        }
+        this._onError = null;
+        this._onKicked = null;
+        this._onEnd = null;
     }
 }

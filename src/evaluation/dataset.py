@@ -76,14 +76,20 @@ def build_dataset(metrics_dir, output_jsonl, root_dir="."):
                 # Build action vector (MultiDiscrete)
                 action_vector = [int(action_dict.get(dim, 0)) for dim in ACTION_DIMS]
 
-                # Build state
-                state = {
-                    "x": round(_to_float(position.get("x", 0.0)), 3),
-                    "y": round(_to_float(position.get("y", 0.0)), 3),
-                    "z": round(_to_float(position.get("z", 0.0)), 3),
-                    "yaw": round(_to_float(camera.get("yaw", 0.0)), 4),
-                    "pitch": round(_to_float(camera.get("pitch", 0.0)), 4),
-                }
+                # Build state — prefer full 13-dim vector when available
+                state_vector = step.get("state_vector")
+                if isinstance(state_vector, list) and len(state_vector) == 13:
+                    # Full state from extractState() — already normalized
+                    state = {"vector": [round(float(v), 4) for v in state_vector]}
+                else:
+                    # Legacy fallback: only position + camera
+                    state = {
+                        "x": round(_to_float(position.get("x", 0.0)), 3),
+                        "y": round(_to_float(position.get("y", 0.0)), 3),
+                        "z": round(_to_float(position.get("z", 0.0)), 3),
+                        "yaw": round(_to_float(camera.get("yaw", 0.0)), 4),
+                        "pitch": round(_to_float(camera.get("pitch", 0.0)), 4),
+                    }
 
                 screenshot_path = os.path.normpath(screenshot)
                 if not os.path.isabs(screenshot_path):
@@ -93,7 +99,6 @@ def build_dataset(metrics_dir, output_jsonl, root_dir="."):
                     "image": screenshot_path,
                     "state": state,
                     "action": action_vector,
-                    "action_names": ACTION_DIMS,
                 }
 
                 out_f.write(json.dumps(example, ensure_ascii=False) + "\n")
