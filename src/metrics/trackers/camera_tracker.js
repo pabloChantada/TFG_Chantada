@@ -15,16 +15,11 @@ export class CameraTracker {
         if (!this.bot || !this.bot.entity) return null;
         
         return {
-            // Radians  ->  Degrees
-            // 0        ->  0°    (forward)
-            //  1.5708  ->  90°   (left)
-            //  -1.5708  ->  -90°   (right)
-            //  3.1416  ->  180°  (backwards)
-            // -3.1416  -> -180°  (backwards, same as 180°)
-            yaw: this.bot.entity.yaw.toFixed(3),      
+            // Mineflayer exposes yaw in radians. Round to 4 decimals for precision/space balance
+            yaw: Math.round(this.bot.entity.yaw * 10000) / 10000,
             // Pitch is -90° when looking straight up, 0° when looking at the horizon, and +90° when looking straight down
             // In radians: -1.5708 (up) to 0 (horizon) to 1.5708 (down)
-            pitch: this.bot.entity.pitch.toFixed(3)
+            pitch: Math.round(this.bot.entity.pitch * 10000) / 10000
         };
     }
 }
