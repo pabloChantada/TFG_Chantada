@@ -118,25 +118,24 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
         } else {
             // No visible ore found — explore to expose new blocks
             console.log(`[mineBlock] No visible ${blockName} found (search ${notFoundCount + 1}, radius ${currentRadius})`)
-            
-            if (notFoundCount === 0) {
-                // First: explore on surface, might find caves/ravines with exposed ores
+
+            // Cycle strategies across attempts instead of failing after 3 misses.
+            // This gives maxAttempts real value and improves recovery in difficult terrain.
+            const strategy = notFoundCount % 4
+            if (strategy === 0) {
+                //zSurface exploration, likely to find cave openings
                 await exploreRandom(bot, 50)
-            } else if (notFoundCount === 1) {
-                // Second: dig underground where ores are more common, 
-                // the tunnel we dig exposes ores in the walls
+            } else if (strategy === 1) {
+                // Descend underground where stone/ores are more likely
                 await exploreDown(bot)
-            } else if (notFoundCount === 2) {
-                // Third: explore horizontally underground to expose more blocks
+            } else if (strategy === 2) {
+                // Underground lateral exploration
                 await exploreRandom(bot, 40)
             } else {
-                // Exhausted exploration strategies
-                throw {
-                    type: 'ORE_NOT_FOUND',
-                    searchedRadius: currentRadius,
-                    reason: 'ore_exhausted_or_missing'
-                }
+                // Short local reposition to break pathfinder deadlocks/chunk boundaries
+                await exploreRandom(bot, 20)
             }
+
             notFoundCount++
             attempts++
         }

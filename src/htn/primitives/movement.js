@@ -102,12 +102,31 @@ async function exploreDown(bot, targetY = 16, timeout = 30000) {
     const startPos = bot.entity.position.clone()
 
     try {
-        const movePromise = bot.pathfinder.goto(new goals.GoalY(targetY))
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Underground exploration timeout')), timeout)
-        )
+        // Descend in stages to reduce pathfinding complexity from very high Y.
+        const stageTargets = []
+        if (currentY > 80 && targetY < 80) stageTargets.push(64)
+        if (currentY > 56 && targetY < 56) stageTargets.push(48)
+        stageTargets.push(targetY)
 
-        await Promise.race([movePromise, timeoutPromise])
+        const perStageTimeout = Math.max(8000, Math.floor(timeout / stageTargets.length))
+
+        for (const yTarget of stageTargets) {
+            const fromPos = bot.entity.position.clone()
+
+            const movePromise = bot.pathfinder.goto(new goals.GoalNear(
+                Math.floor(fromPos.x),
+                yTarget,
+                Math.floor(fromPos.z),
+                3
+            ))
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Stage timeout to Y=${yTarget}`)), perStageTimeout)
+            )
+
+            await Promise.race([movePromise, timeoutPromise])
+            console.log(`[exploreDown] Reached stage Y=${Math.floor(bot.entity.position.y)} (target ${yTarget})`)
+        }
+
         console.log(`[exploreDown] Reached Y=${Math.floor(bot.entity.position.y)}`)
     } catch (e) {
         const movedDown = startPos.y - bot.entity.position.y
@@ -116,7 +135,7 @@ async function exploreDown(bot, targetY = 16, timeout = 30000) {
             return
         }
         console.warn(`[exploreDown] Failed to dig down: ${e.message}`)
-        // Fall back to horizontal exploration
+        // Fall back to horizontal exploration to find easier routes/cave entrances
         await exploreRandom(bot, 20)
     }
 }

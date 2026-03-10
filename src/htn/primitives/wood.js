@@ -86,8 +86,7 @@ async function obtainWoodType(bot, mcData) {
 
         if (!nearbyWood) {
             // Final fallback: oak 
-            console.warn(`[Wood.js] No visible wood found nearby. Disconnecting.`);
-            bot.end();
+            console.warn(`[Wood.js] No visible wood found nearby.`);
             throw new Error(`No visible wood found nearby`);
         }
     }
@@ -105,8 +104,6 @@ async function obtainPlankType(bot, mcData, woodType, metricsCollector = null) {
     if (!plankType) {
         console.warn(`[Wood.js] No plank mapping for "${woodType}"`);
         metricsCollector?.recordError(`No plank mapping for "${woodType}"`);
-        await metricsCollector?.export(bot);
-        bot.end();
         throw new Error(`No plank mapping for "${woodType}"`);
     }
     return plankType;

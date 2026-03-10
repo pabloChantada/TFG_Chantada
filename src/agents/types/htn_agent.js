@@ -1,9 +1,9 @@
 import { BaseAgent } from './base_agent.js';
-import { startHTN } from '../../htn/main_htn.js';
+import { startChopTrees, startHTN } from '../../htn/main_htn.js';
 import { MetricsCollector } from '../../metrics/metrics_collector.js';
 import { logInfo, logError } from '../logging.js';
 
-const FORCE_EXIT_TIMEOUT = 10000; // 10 seconds
+const FORCE_EXIT_TIMEOUT = 45000; // 45 seconds (15s screenshot flush + 30s buffer)
 
 export class HTNAgent extends BaseAgent {
     constructor(agentName) {
@@ -68,10 +68,23 @@ export class HTNAgent extends BaseAgent {
             
             const viewerOk = await this.setupViewer(viewerPort);
             
+            // Pre-initialize the screenshot browser BEFORE starting tracking
+            // so the first action doesn't have a cold-start delay
+            if (viewerOk) {
+                logInfo(this.name, `Warming up screenshot browser...`);
+                this.metricsCollector.screenshotManager.enable(viewerPort);
+                const browserReady = await this.metricsCollector.warmupScreenshots();
+                if (browserReady) {
+                    logInfo(this.name, `Screenshot browser is ready`);
+                } else {
+                    logError(this.name, new Error(`Screenshot browser failed to warm up`));
+                }
+            }
+
             logInfo(this.name, `Starting control tracking...`);
             this.metricsCollector.startControlTracking(
                 this.bot,
-                50,
+                150,       // poll interval — must be >= screenshot capture time (~100ms)
                 viewerOk,
                 viewerOk ? viewerPort : null
             );
@@ -99,6 +112,9 @@ export class HTNAgent extends BaseAgent {
 
         this.bot.on('end', (reason) => {
             console.warn(`[WARN] [${this.name}] Bot connection ended: ${reason}`);
+            this.metricsCollector.stopControlTracking();
+            // Stop new screenshot captures (existing queue will finish)
+            this.metricsCollector.stopScreenshots();
         });
     }
 
@@ -116,7 +132,7 @@ export class HTNAgent extends BaseAgent {
      */
     async runLogic() {
         try {
-            const result = await startHTN(this.bot);
+            const result = await startChopTrees(this.bot);
             this.metricsCollector.completeTask(result?.success || false);
             
             logInfo(this.name, `HTN execution completed - Success: ${result?.success}`);

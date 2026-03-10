@@ -51,14 +51,62 @@ function isBlockExposed(bot, blockPos) {
 }
 
 /**
- * Finds the nearest block that is visible (has at least one exposed face).
- * Unlike findNearestBlock, this won't return blocks completely buried underground.
- * Simulates realistic player vision — only blocks in caves, on surfaces, or in dug tunnels.
+ * Checks if the bot has line-of-sight to a block position.
+ * Uses raycast from the bot's eye position toward the block — the same non-omniscient
+ * approach as the RL agent's bot.blockAtCursor().
+ * 
+ * The bot can only "see" a block if there is NO opaque block between its eyes and the target.
+ * This prevents finding blocks in unvisited caves, behind walls, etc.
+ * 
+ * @param {Bot} bot - The mineflayer bot instance.
+ * @param {Vec3} blockPos - The block position to check visibility for.
+ * @returns {boolean} - True if the bot has clear line-of-sight to the block.
+ */
+function hasLineOfSight(bot, blockPos) {
+    const eyePos = bot.entity.position.offset(0, 1.62, 0) // player eye height
+    const blockCenter = blockPos.offset(0.5, 0.5, 0.5)
+    const direction = blockCenter.minus(eyePos)
+    const distance = direction.norm()
+
+    // Very close blocks are always visible (same block or adjacent)
+    if (distance < 1.5) return true
+    // Beyond reasonable visual range, skip the expensive raycast
+    if (distance > 64) return false
+
+    const normalized = direction.scaled(1 / distance)
+
+    try {
+        // bot.world.raycast — same engine that powers bot.blockAtCursor()
+        const hit = bot.world.raycast(eyePos, normalized, distance + 1)
+        if (!hit) return false
+
+        // The raycast result can be a block or {position: Vec3}
+        const hitPos = hit.position || hit
+        return Math.floor(hitPos.x) === Math.floor(blockPos.x) &&
+               Math.floor(hitPos.y) === Math.floor(blockPos.y) &&
+               Math.floor(hitPos.z) === Math.floor(blockPos.z)
+    } catch (_e) {
+        return false
+    }
+}
+
+/**
+ * Finds the nearest block that the bot can actually SEE (non-omniscient).
+ * 
+ * Two-stage filter:
+ *   1. isBlockExposed — block has at least one face adjacent to air (cheap check)
+ *   2. hasLineOfSight — unobstructed raycast from bot's eyes to the block (same as RL)
+ * 
+ * This means the bot CANNOT find blocks in:
+ *   - Unvisited caves (wall between bot and block)
+ *   - Behind hills or structures
+ *   - Buried underground with no exposure
+ * 
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
  * @param {string} blockName - The name of the block to find (e.g., "iron_ore").
  * @param {number} maxDistance - Maximum search distance (default 32).
- * @returns {Block|null} - The nearest visible block, or null if none found.
+ * @returns {Block|null} - The nearest truly visible block, or null if none found.
  */
 function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32) {
     const blockId = getBlockId(mcData, blockName)
@@ -71,9 +119,12 @@ function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32) {
     })
 
     for (const pos of positions) {
-        if (isBlockExposed(bot, pos)) {
-            return bot.blockAt(pos)
-        }
+        // Stage 1: cheap check — does the block have an exposed face?
+        if (!isBlockExposed(bot, pos)) continue
+        // Stage 2: expensive check — can the bot actually see it from here?
+        if (!hasLineOfSight(bot, pos)) continue
+
+        return bot.blockAt(pos)
     }
 
     return null
@@ -83,5 +134,6 @@ export {
     getBlockId,
     findNearestBlock,
     findNearestVisibleBlock,
-    isBlockExposed
+    isBlockExposed,
+    hasLineOfSight
 }

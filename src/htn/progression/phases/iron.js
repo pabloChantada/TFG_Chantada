@@ -1,7 +1,6 @@
 import { getBotLabel } from '../utils.js'
 import { runSmartTask } from '../smart_task.js'
 import { hasItem } from '../../primitives/inventory.js'
-import { getBlockId } from '../../primitives/blocks.js'
 import { mineBlock } from '../../primitives/mining.js'
 import { craftItem } from '../../tasks/crafting.js'
 import { ensureCraftingTable } from '../../tasks/block_placement.js'
@@ -70,10 +69,9 @@ async function phaseIron(bot, mcData) {
                 
                 clearFurnaceMemory(bot)
                 
-                const oldFurnace = bot.findBlock({
-                    matching: getBlockId(mcData, 'furnace'),
-                    maxDistance: 32
-                })
+                const { findNearestVisibleBlock } = await import('../../primitives/blocks.js')
+                
+                const oldFurnace = findNearestVisibleBlock(bot, mcData, 'furnace', 32)
                 
                 if (oldFurnace) {
                     console.log(`[REPLAN] Breaking old furnace at (${oldFurnace.position.x}, ${oldFurnace.position.y}, ${oldFurnace.position.z})`)
