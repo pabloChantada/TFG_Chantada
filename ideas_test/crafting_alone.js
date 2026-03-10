@@ -261,7 +261,7 @@ let stoneBlockId;
 
 async function collectStone(requiredStone) {
     // FIX: Use itemsByName for the item you receive in inventory
-    cobblestoneItemId = mcData.itemsByName.cobblestone.id  // ✓ CORRECTO
+    cobblestoneItemId = mcData.itemsByName.cobblestone.id  // CORRECTO
     stoneBlockId = mcData.blocksByName.stone.id
     
     console.log(`Cobblestone item ID: ${cobblestoneItemId}, Stone block ID: ${stoneBlockId}`)

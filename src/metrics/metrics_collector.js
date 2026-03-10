@@ -1,29 +1,26 @@
-import fs from 'fs';
-import path from 'path';
-import puppeteer from 'puppeteer';
-import { ActionTracker } from './action_tracker.js';
+/**
+ * Main metrics collector
+ * Orchestrates tracking, screenshots, and export
+ */
+
+import { ControlTracker } from './trackers/control_tracker.js'
+import { ScreenshotManager } from './collector/screenshot.js'
+import { VersionManager } from './collector/version_manager.js'
+import { MetricsExporter } from './collector/export_metrics.js'
+
+const POLL_INTERVAL = 150 // ms
 
 export class MetricsCollector {
     constructor(agentName, agentType) {
-        this.agentName = agentName;
-        this.agentType = agentType;
-        this.exportPath = null;
-        this.lastPosition = null;
-        this.trackingInterval = null; // How many intervals to track in a second
-        this.currentAction = null; // Track ongoing action
-        this.actionTracker = null; // Automatic action tracker
-        this.captureScreenshots = false;
-        this.viewerPort = null;
-        this.screenshotsDir = null;
-        this.screenshotFormat = 'png';
-        // Could be modified to be 256x256 and not resize un the VAE
-        this.screenshotWidth = 1024;
-        this.screenshotHeight = 768;
-        this.browser = null;
-        this.page = null;
-        this.screenshotQueue = Promise.resolve(null);
-        this.actionQueue = Promise.resolve(null);
+        this.agentName = agentName
+        this.agentType = agentType
         
+        // Sub-modules
+        this.controlTracker = null
+        this.screenshotManager = new ScreenshotManager(agentName)
+        this.exporter = new MetricsExporter(agentName)
+        
+        // Core metrics
         this.metrics = {
             version: null,
             agent_name: agentName,
@@ -33,463 +30,270 @@ export class MetricsCollector {
             start_time: null,
             end_time: null,
             time_elapsed_s: 0,
-            steps_taken: 0,
-            exploration_distance: 0,
-            // Movements, actions, and observations for world model export
-            // The actions are minimal; i.e: mine, move, jump, etc.
-            // A list containing: {
-            //   x, y, z: floats, 
-            //   timestamp: date,
-            //   action: str,
-            //   success: bool
-            // }
-            world_model: [], 
-            action_counts: {}, // Count of each action performed
             errors: []
-        };
-    }
-
-    /**
-     * =============================================================================
-     * ================================ UTILS FUNCTIONS ============================
-     * =============================================================================
-     */
-
-    /**
-     * Capture current inventory state
-     * @param {Object} bot - Mineflayer bot instance
-     * @returns {Object} Inventory snapshot
-     */
-    captureInventoryState(bot) {
-        if (!bot) return {};
-        // Iterate through bot inventory and capture item names and counts
-        return bot.inventory.items().map(item => ({
-            name: item.name,
-            id: item.type,
-            count: item.count
-        }));
-    }
-
-
-    /**
-     * Compare two inventory states
-     * @param {Array} startInv - Starting inventory
-     * @param {Array} endInv - Ending inventory
-     * @returns {Array} Changed items
-     */
-    didInventoryChange(startInv, endInv) {
-        const changes = [];
-        // Obtain a map of end inventory for lookup
-        const endMap = new Map(endInv.map(item => [item.name, item.count]));
-        
-        // Check for changed or removed items
-        for (const startItem of startInv) {
-            const endCount = endMap.get(startItem.name) || 0;
-            if (endCount !== startItem.count) {
-                changes.push({
-                    item: startItem.name,
-                    delta: endCount - startItem.count
-                });
-            }
         }
-        
-        // Check for new items
-        const startMap = new Map(startInv.map(item => [item.name, item.count]));
-        for (const endItem of endInv) {
-            if (!startMap.has(endItem.name)) {
-                changes.push({
-                    item: endItem.name,
-                    delta: endItem.count
-                });
-            }
+    }
+
+    // =========================================================================
+    // --- INITIALIZATION
+    // =========================================================================
+
+    /**
+     * Initialize metrics collection
+     */
+    async initialize(exportPath, task, captureScreenshots = false, viewerPort = null) {
+        this.exporter.setExportPath(exportPath)
+        this.metrics.task = task || 'Iron task'
+        this.metrics.start_time = new Date().toISOString()
+
+        if (captureScreenshots && viewerPort) {
+            this.screenshotManager.enable(viewerPort)
         }
-        
-        return changes.length > 0 ? changes : null;
+
+        console.log(`[${this.agentName}] Metrics initialized - Export: ${this.exporter.getExportPath()}`)
     }
 
-
+    // =========================================================================
+    // --- CONTROL TRACKING
+    // =========================================================================
 
     /**
-     * Start tracking an action
-     * @param {string} actionName - Name of the action
-     * @param {Object} bot - Mineflayer bot instance
+     * Pre-initialize the screenshot browser so first capture has no cold-start delay.
+     * Must be called AFTER enable() and BEFORE startControlTracking().
      */
-    trackActionStart(actionName, bot) {
-        this.currentAction = {
-            name: actionName,
-            startTime: new Date().toISOString(),
-            startInventory: this.captureInventoryState(bot)
-        };
+    async warmupScreenshots() {
+        if (this.screenshotManager.isEnabled()) {
+            return await this.screenshotManager.warmup()
+        }
+        return false
     }
 
     /**
-     * End action tracking with success/failure status
-     * Records actions
-     * @param {boolean} success - Whether the action succeeded
-     * @param {Object} bot - Mineflayer bot instance
+     * Start low-level control tracking
      */
-    async trackActionEnd(success, bot) {
-        if (!this.currentAction) return;
+    startControlTracking(bot, pollInterval = POLL_INTERVAL, captureScreenshots = false, viewerPort = null) {
+        if (!bot) {
+            console.warn('[MetricsCollector] Cannot start control tracking: bot not provided')
+            return
+        }
 
-        const currentActionData = this.currentAction;
-        this.currentAction = null;
+        // Enable screenshots if requested
+        if (captureScreenshots && viewerPort) {
+            this.screenshotManager.enable(viewerPort)
+        }
 
-        this.actionQueue = this.actionQueue.then(async () => {
-            const completedAction = {
-                name: currentActionData.name,
-                success,
-                startTime: currentActionData.startTime,
-                endTime: new Date().toISOString(),
-                duration: (new Date() - new Date(currentActionData.startTime)) / 1000
-            };
-
-            const screenshotPath = await this._queueScreenshotCapture();
-
-            // Record action completion to world_model
-            this.metrics.world_model.push({
-                x: bot.entity.position.x,
-                y: bot.entity.position.y,
-                z: bot.entity.position.z,
-                action: completedAction,
-                timestamp: completedAction.endTime,
-                screenshot: screenshotPath
-            });
-            
-            // Count occurrences of this action
-            this.metrics.action_counts[currentActionData.name] = 
-                (this.metrics.action_counts[currentActionData.name] || 0) + 1;
-        });
-
-        return this.actionQueue;
+        // Initialize control tracker
+        try {
+            this.controlTracker = new ControlTracker(bot, this)
+            this.controlTracker.start(pollInterval)
+            console.log(`[${this.agentName}] Control tracking started`)
+        } catch (error) {
+            console.error(`[${this.agentName}] Failed to start control tracking:`, error)
+            this.controlTracker = null
+        }
     }
+
+    /**
+     * Stop control tracking
+     */
+    stopControlTracking() {
+        if (this.controlTracker) {
+            this.controlTracker.stop()
+        }
+    }
+
+    /**
+     * Check whether this run was configured to capture screenshots
+     */
+    hadScreenshotsEnabled() {
+        return this.screenshotManager.wasEnabled()
+    }
+    /**
+     * Stop screenshot capture (when bot disconnects)
+     */
+    stopScreenshots() {
+        this.screenshotManager.stop();
+    }
+    /**
+     * Get control states (for external queries)
+     */
+    getControlStates() {
+        return this.controlTracker?.getAllControlStates() || null
+    }
+
+    /**
+     * Get RL action sequence
+     */
+    getRLActionSequence(limit = null) {
+        return this.controlTracker?.getRLActionSequence(limit) || null
+    }
+
+    /**
+     * Get current RL action state
+     */
+    getCurrentRLAction() {
+        return this.controlTracker?.getCurrentRLAction() || null
+    }
+
+    /**
+     * Get RL action statistics
+     */
+    getRLActionStats() {
+        return this.controlTracker?.getRLActionStats() || null
+    }
+
+        /**
+     * Capture bot version and final state
+     */
+    async getFinalState(bot) {
+        const state = {
+            version: await VersionManager.getGitVersion()
+        }
+
+        if (bot?.entity?.position) {
+            state.final_position = bot.entity.position
+        }
+
+        if (bot?.inventory?.items) {
+            state.final_inventory = bot.inventory.items().map(item => ({
+                name: item.name,
+                count: item.count
+            }))
+        }
+
+        return state
+    }
+
+    // =========================================================================
+    // --- SCREENSHOTS (exposed to ControlTracker)
+    // =========================================================================
+
+    /**
+     * Queue a screenshot capture (called by ControlTracker)
+     */
+    async _queueScreenshotCapture() {
+        return this.screenshotManager.queueCapture()
+    }
+
+    /**
+     * Check if screenshots are enabled
+     */
+    captureScreenshots() {
+        return this.screenshotManager.isEnabled()
+    }
+
+    /**
+     * Enable screenshots
+     */
+    enableScreenshots(viewerPort) {
+        this.screenshotManager.enable(viewerPort)
+    }
+
+    // =========================================================================
+    // --- TASK COMPLETION & ERRORS
+    // =========================================================================
 
     /**
      * Mark task completion
-     * @param {boolean} success - Whether the task succeeded
      */
     completeTask(success) {
-        this.metrics.success = success;
-        this.metrics.end_time = new Date().toISOString();
+        this.metrics.success = success
+        this.metrics.end_time = new Date().toISOString()
         this.metrics.time_elapsed_s = 
-            (new Date(this.metrics.end_time) - new Date(this.metrics.start_time)) / 1000;
+            (new Date(this.metrics.end_time) - new Date(this.metrics.start_time)) / 1000
     }
 
     /**
      * Record an error
-     * @param {string} errorMessage - Error message to record
      */
     recordError(errorMessage) {
         this.metrics.errors.push({
             message: errorMessage,
             timestamp: new Date().toISOString()
-        });
+        })
     }
 
-    /**
-     * =============================================================================
-     * ================================ MAIN FUNCTIONS =============================
-     * =============================================================================
-     */
-
-    /**
-     * Initialize metrics collection
-     * @param {string} exportPath - Path to export metrics (file or directory)
-     * @param {string} task - Task description
-     * @param {boolean} captureScreenshots - Enable viewer screenshots for world_model entries
-     * @param {number} viewerPort - Port for prismarine viewer
-     */
-    async initialize(exportPath, task, captureScreenshots = false, viewerPort = null) {
-        // Set metrics export path - if it's a directory, add filename; if null or empty, set default
-        if (exportPath) {
-            // If path ends with / or has no extension, treat as directory and add filename
-            if (exportPath.endsWith('/') || !exportPath.includes('.')) {
-                // exportPath/metrics_agentName_timestamp.json
-                this.exportPath = `${exportPath.replace(/\/$/, '')}/metrics_${this.agentName}_${Date.now()}.json`;
-            } else {
-                this.exportPath = exportPath;
-            }
-        } else {
-            // Default metrics path with timestamp and agent name
-            this.exportPath = `src/metrics/agent_metrics/metrics_${this.agentName}_${Date.now()}.json`;
-        }
-
-        this.metrics.task = task || 'Default task';
-        this.metrics.start_time = new Date().toISOString();
-
-        this.captureScreenshots = Boolean(captureScreenshots);
-        this.viewerPort = viewerPort;
-        if (this.captureScreenshots) {
-            this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}_screenshots/`;
-        }
-        
-        console.log(`[${this.agentName}] Metrics initialized - Export path: ${this.exportPath}`);
-    }
-
-    /**
-     * Start automatic action tracking based on bot state
-     * @param {Object} bot - Mineflayer bot instance
-     * @param {number} pollInterval - How often to check state (ms, default 100ms)
-     */
-    startActionTracking(bot, pollInterval = 50) {
-        if (!bot) {
-            console.warn('[MetricsCollector] Cannot start action tracking: bot not provided');
-            return;
-        }
-
-        this.actionTracker = new ActionTracker(bot, this);
-        this.actionTracker.start(pollInterval);
-        console.log('[MetricsCollector] Automatic action tracking started');
-    }
-
-    /**
-     * Stop automatic action tracking
-     */
-    stopActionTracking() {
-        if (this.actionTracker) {
-            this.actionTracker.stop();
-            this.actionTracker = null;
-        }
-    }
-
-    /**
-     * Start tracking bot observations and movements
-     * Distinguishes between 'idle' (not moving) and actual actions being performed
-     * @param {Object} bot - Mineflayer bot instance
-     * @param {number} samplingRate - Samples per second (default: 1)
-     */
-    startWorldTracking(bot, samplingRate = 1) {
-        if (!bot) return;
-
-        // Start automatic action tracking alongside world tracking
-        this.startActionTracking(bot, 100);
-
-        // Copy the initial position
-        this.lastPosition = bot.entity.position.clone();
-
-        const intervalMs = 1000 / samplingRate;
-        // More threshold than 0.05 can cause to always be considered as idle
-        const movementThreshold = 0.05; // Minimum distance to consider as "moving"
-
-        // Sample bot state at fixed intervals
-        this.trackingInterval = setInterval(async () => {
-            const currentPos = bot.entity.position;
-            // Obtain the traveled distance since last sample
-            const dist = this.lastPosition.distanceTo(currentPos);
-
-            this.metrics.exploration_distance += dist;
-
-            // Determine current action state
-            let actionState = 'idle';
-            if (this.currentAction) {
-                actionState = this.currentAction.name;
-            } else if (dist > movementThreshold) {
-                actionState = 'moving';
-            }
-
-            // Update last position after computing movement
-            this.lastPosition = currentPos.clone();
-            this.metrics.action_counts[actionState] = (this.metrics.action_counts[actionState] || 0) + 1;
-            
-            // Create action object
-            let actionObj = null;
-            // Right now we only use 'mine'
-            if (this.currentAction) {
-                actionObj = {
-                    name: this.currentAction.name,
-                    success: null,
-                    startTime: this.currentAction.startTime,
-                    endTime: null,
-                    duration: null
-                };
-            } else if (actionState === 'moving' || actionState === 'idle') {
-                actionObj = {
-                    name: actionState,
-                    success: undefined,
-                    startTime: null,
-                    endTime: null,
-                    duration: null
-                };
-            }
-            
-            const screenshotPath = await this._queueScreenshotCapture();
-
-            // Capture bot state
-            this.metrics.world_model.push({
-                x: currentPos.x,
-                y: currentPos.y,
-                z: currentPos.z,
-                action: actionObj,
-                timestamp: new Date().toISOString(),
-                screenshot: screenshotPath
-            });
-        }, intervalMs);
-
-        console.log(`[${this.agentName}] World tracking started at ${samplingRate} samples/second`);
-    }
-
-    /**
-     * Stop world tracking and clear interval
-     */
-    async stopWorldTracking() {
-        if (this.trackingInterval) {
-            clearInterval(this.trackingInterval);
-            this.trackingInterval = null;
-            console.log(`[${this.agentName}] World tracking stopped`);
-        }
-
-        if (this.browser) {
-            await this.browser.close();
-            this.browser = null;
-            this.page = null;
-        }
-    }
-
-    /**
-     * =============================================================================
-     * ================================ SCREENSHOT FUNCTIONS =======================
-     * =============================================================================
-     */
-
-    /**
-     * Checks if screenshots directory exists and creates it if not
-     * @returns true if the directory exists or was created successfully, false otherwise
-     */
-    async _ensureScreenshotDir() {
-        if (!this.screenshotsDir) return;
-        if (!fs.existsSync(this.screenshotsDir)) {
-            fs.mkdirSync(this.screenshotsDir, { recursive: true });
-        }
-    }
-
-    /**
-     * Checks if the browser and page are initialized, and initializes them if not
-     */
-    async _ensureBrowser() {
-        if (!this.captureScreenshots || !this.viewerPort) return;
-        if (this.browser && this.page) return;
-
-        this.browser = await puppeteer.launch({ headless: 'new' });
-        this.page = await this.browser.newPage();
-        await this.page.setViewport({ width: this.screenshotWidth, height: this.screenshotHeight });
-        await this.page.goto(`http://localhost:${this.viewerPort}`, { waitUntil: 'networkidle0' });
-        await this.page.waitForSelector('canvas');
-    }
-
-    /**
-     * Captures a screenshot of the viewer canvas and saves it to the screenshots directory
-     */
-    async _captureViewerScreenshot() {
-        if (!this.captureScreenshots || !this.viewerPort) return null;
-        try {
-            await this._ensureScreenshotDir();
-            await this._ensureBrowser();
-
-            const canvas = await this.page.$('canvas');
-            if (!canvas) return null;
-
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `worldmodel_${timestamp}.${this.screenshotFormat}`;
-            const filePath = path.join(this.screenshotsDir, filename);
-
-            await canvas.screenshot({ path: filePath, type: this.screenshotFormat });
-            return filePath;
-        } catch (error) {
-            console.warn(`[${this.agentName}] Screenshot capture failed: ${error.message}`);
-            return null;
-        }
-    }
-
-    /**
-     * Queues a screenshot capture to avoid overlapping captures
-     * May have some delay if captures take longer than the tracking interval, but ensures we get a screenshot for each recorded action without conflicts
-     */
-    async _queueScreenshotCapture() {
-        if (!this.captureScreenshots) return null;
-        this.screenshotQueue = this.screenshotQueue.then(() => this._captureViewerScreenshot());
-        return this.screenshotQueue;
-    }
-
-
-    /**
-     * =============================================================================
-     * ================================ GET'S AND EXPORTS ==========================
-     * =============================================================================
-     */
+    // =========================================================================
+    // --- EXPORT
+    // =========================================================================
 
     /**
      * Get current metrics snapshot
-     * @returns {Object} Current metrics
      */
     getMetrics() {
-        return { ...this.metrics };
+        return { ...this.metrics }
     }
 
     /**
-     * Export metrics to JSON file
-     * @param {Object} bot - Optional bot instance to capture final state
+     * Export metrics to JSON
      */
     async export(bot = null) {
-        if (!this.exportPath) {
-            console.log(`[${this.agentName}] Metrics export disabled (no path specified)`);
-            return;
-        }
-
         try {
-            // Ensure directory exists
-            const dir = path.dirname(this.exportPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-                console.log(`[${this.agentName}] Created metrics directory: ${dir}`);
+            console.log(`[${this.agentName}] ========== STARTING METRICS EXPORT ==========`)
+
+            // Freeze control/action recording before finalizing dataset export
+            this.stopControlTracking()
+            
+            // Capture version and final state (safe even if bot is partially disconnected)
+            if (bot) {
+                try {
+                    console.log(`[${this.agentName}] Capturing final bot state...`)
+                    const finalState = await this.getFinalState(bot)
+                    Object.assign(this.metrics, finalState)
+                    console.log(`[${this.agentName}] Final state captured`)
+                } catch (err) {
+                    console.warn(`[${this.agentName}] Final state capture failed: ${err.message}`)
+                }
             }
 
-            // Add th commit version as an ID of the metric
-            if (bot && bot.entity && bot.inventory) {
-                await this.getVersion(bot);
+            // Screenshots are captured synchronously with each action record,
+            // so there's nothing to flush. Just log stats.
+            if (this.screenshotManager.wasEnabled()) {
+                const tracker = this.controlTracker?.rlActionTracker
+                if (tracker) {
+                    console.log(`[${this.agentName}] Screenshot stats: ${tracker.capturedCount} captured, ${tracker.skippedCount} skipped`)
+                }
             }
 
-            // Export JSON metrics
-            await this.exportJSON();
+            // Collect control tracking data (includes rl_actions with any screenshots)
+            if (this.controlTracker) {
+                console.log(`[${this.agentName}] Exporting control tracking data...`)
+                this.metrics.control_tracking = this.controlTracker.exportControlData()
+                console.log(`[${this.agentName}] Control tracking data ready`)
+            } else {
+                console.log(`[${this.agentName}] No control tracker active`)
+            }
+
+            // === CRITICAL: Export JSON (this MUST succeed) ===
+            console.log(`[${this.agentName}] Calling exporter.exportJSON()...`)
+            const exportResult = await this.exporter.exportJSON(this.metrics)
+            console.log(`[${this.agentName}] Export result:`, exportResult)
+
+            // Cleanup browser (best-effort)
+            try {
+                await this.screenshotManager.cleanup()
+            } catch (err) {
+                console.warn(`[${this.agentName}] Screenshot cleanup failed: ${err.message}`)
+            }
+            
+            console.log(`[${this.agentName}] ========== METRICS EXPORT COMPLETE ==========`)
 
         } catch (error) {
-            console.error(`[${this.agentName}] Failed to export metrics:`, error.message);
+            console.error(`[${this.agentName}] ========== METRICS EXPORT FAILED ==========`)
+            console.error(`[${this.agentName}] Error:`, error.message)
+            console.error(`[${this.agentName}] Stack:`, error.stack)
+            
+            // Last-resort: try to export whatever metrics we have, without screenshots
+            try {
+                console.log(`[${this.agentName}] Attempting emergency JSON export...`)
+                if (this.controlTracker && !this.metrics.control_tracking) {
+                    this.metrics.control_tracking = this.controlTracker.exportControlData()
+                }
+                await this.exporter.exportJSON(this.metrics)
+                console.log(`[${this.agentName}] ✓ Emergency export succeeded`)
+            } catch (emergencyErr) {
+                console.error(`[${this.agentName}] Emergency export also failed: ${emergencyErr.message}`)
+            }
         }
-    }
-
-    /**
-     * Capture final version (git commit hash), then export metrics to JSON file
-     * @param {Object} bot - Mineflayer bot instance to capture final state and version information
-     */
-    async getVersion(bot) {
-        // Get git version
-        try {
-            // Obtain the current git branch
-            const refPath = '.git/' + fs.readFileSync('.git/HEAD', 'utf-8').trim().split(' ')[1];
-            // Obtain the commit hash from the ref file
-            const refContent = fs.readFileSync(refPath, 'utf-8');
-            this.metrics.version = refContent.toString().trim();
-        } catch (e) {
-            console.warn(`[${this.agentName}] No se pudo obtener la versión de Git: ${e.message}`);
-            this.metrics.version = bot.version || 'unknown';
-        }
-
-        if (bot?.entity?.position) {
-            this.metrics.final_position = bot.entity.position;
-        }
-        if (bot?.inventory?.items) {
-            this.metrics.final_inventory = bot.inventory.items().map(item => ({
-                name: item.name,
-                count: item.count
-            }));
-        }
-    }
-
-    /**
-     * Export metrics to JSON file
-     */
-    async exportJSON() {
-        fs.writeFileSync(
-            this.exportPath,
-            JSON.stringify(this.metrics, null, 2)
-        );
     }
 }

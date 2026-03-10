@@ -40,17 +40,14 @@ DEVICE = torch.device(
     else "cpu"
 )
 
-# Canonical action label order (sorted for reproducibility)
-ACTION_LABELS = ["build", "idle", "mine", "move", "moving"]
-ACTION_TO_IDX = {a: i for i, a in enumerate(ACTION_LABELS)}
-IDX_TO_ACTION = {i: a for a, i in ACTION_TO_IDX.items()}
-NUM_ACTIONS = len(ACTION_LABELS)
-
-# Features extracted from `state.action_counts` — one counter per action
-STATE_ACTION_KEYS = ACTION_LABELS  # same set
-
-# Total state vector size: x + y + z + len(ACTION_LABELS) counters
-STATE_DIM = 3 + len(STATE_ACTION_KEYS)
+# Action labels will be built dynamically from dataset
+# These are set globally after loading data
+ACTION_LABELS = []
+ACTION_TO_IDX = {}
+IDX_TO_ACTION = {}
+NUM_ACTIONS = 0
+STATE_ACTION_KEYS = []
+STATE_DIM = 3  # x, y, z + yaw + pitch + action_counts
 
 # ImageNet normalisation expected by torchvision models
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -106,6 +103,8 @@ class ActionDataset(Dataset):
             state.get("x", 0.0),
             state.get("y", 0.0),
             state.get("z", 0.0),
+            state.get("yaw", 0.0),
+            state.get("pitch", 0.0),
         ]
         counts = state.get("action_counts", {})
         for key in STATE_ACTION_KEYS:
@@ -143,6 +142,25 @@ def load_jsonl(path):
             if line:
                 entries.append(json.loads(line))
     return entries
+
+
+def build_action_labels(entries):
+    """Build action labels dynamically from dataset entries."""
+    global ACTION_LABELS, ACTION_TO_IDX, IDX_TO_ACTION, NUM_ACTIONS, STATE_ACTION_KEYS, STATE_DIM
+    
+    # Extract unique actions and sort for reproducibility
+    unique_actions = sorted(set(e["action"] for e in entries))
+    
+    ACTION_LABELS = unique_actions
+    ACTION_TO_IDX = {a: i for i, a in enumerate(ACTION_LABELS)}
+    IDX_TO_ACTION = {i: a for a, i in ACTION_TO_IDX.items()}
+    NUM_ACTIONS = len(ACTION_LABELS)
+    STATE_ACTION_KEYS = ACTION_LABELS
+    STATE_DIM = 3 + 2 + len(STATE_ACTION_KEYS)  # x,y,z + yaw,pitch + action_counts
+    
+    print(f"Actions detected: {ACTION_LABELS}")
+    print(f"Number of actions: {NUM_ACTIONS}")
+    print(f"State dimension: {STATE_DIM}\n")
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -273,10 +291,24 @@ def train_model(
     start = time.time()
     # ── 1. Load data ─────────────────────────────────────────────────
     entries = load_jsonl(jsonl_path)
+    
+    # Build action labels dynamically from dataset
+    build_action_labels(entries)
+    
     labels = [ACTION_TO_IDX.get(e["action"], 0) for e in entries]
+    
+    # Check if stratify is possible (all classes need at least 2 samples)
+    label_counts = Counter(labels)
+    min_count = min(label_counts.values())
+    use_stratify = min_count >= 2
+    
+    if not use_stratify:
+        print(f"⚠️  Warning: Some classes have <2 samples. Stratification disabled.")
+        print(f"    Class counts: {label_counts}\n")
 
     train_entries, val_entries, train_labels, val_labels = train_test_split(
-        entries, labels, test_size=val_split, random_state=seed, stratify=labels
+        entries, labels, test_size=val_split, random_state=seed, 
+        stratify=labels if use_stratify else None
     )
 
     print(f"Train: {len(train_entries)}  |  Val: {len(val_entries)}")
@@ -291,7 +323,11 @@ def train_model(
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,   num_workers=0)
 
     # ── 2. Build model ───────────────────────────────────────────────
-    model = ActionPredictor(hidden_dim=hidden_dim).to(DEVICE)
+    model = ActionPredictor(
+        state_dim=STATE_DIM, 
+        hidden_dim=hidden_dim, 
+        num_actions=NUM_ACTIONS
+    ).to(DEVICE)
 
     # Show trainable vs frozen parameters
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -367,7 +403,10 @@ def train_model(
                 "model_state_dict": model.state_dict(),
                 "image_size": image_size,
                 "hidden_dim": hidden_dim,
+                "state_dim": STATE_DIM,
+                "num_actions": NUM_ACTIONS,
                 "action_labels": ACTION_LABELS,
+                "state_action_keys": STATE_ACTION_KEYS,
                 "best_val_acc": best_val_acc,
             }, output_path)
             tag = "  ★ saved"
@@ -398,11 +437,18 @@ def evaluate(
 ):
     """Run evaluation on a full dataset and print classification report."""
     entries = load_jsonl(jsonl_path)
+    
+    # Build action labels dynamically from dataset
+    build_action_labels(entries)
 
     dataset = ActionDataset(entries, image_size=image_size, root_dir=root_dir, augment=False)
     loader  = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
-    model = ActionPredictor(hidden_dim=hidden_dim).to(DEVICE)
+    model = ActionPredictor(
+        state_dim=STATE_DIM, 
+        hidden_dim=hidden_dim, 
+        num_actions=NUM_ACTIONS
+    ).to(DEVICE)
     ckpt  = torch.load(model_weights, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -449,8 +495,30 @@ def predict_action(
     -------
     dict  {"action": str, "confidence": float, "probabilities": dict}
     """
-    model = ActionPredictor(hidden_dim=hidden_dim).to(DEVICE)
     ckpt  = torch.load(model_weights, map_location=DEVICE, weights_only=False)
+    
+    # Load metadata from checkpoint
+    saved_action_labels = ckpt.get("action_labels", [])
+    saved_state_dim = ckpt.get("state_dim", 3)
+    saved_num_actions = ckpt.get("num_actions", len(saved_action_labels))
+    
+    if saved_action_labels:
+        # Temporarily set global action labels for prediction
+        global ACTION_LABELS, ACTION_TO_IDX, IDX_TO_ACTION, NUM_ACTIONS, STATE_DIM, STATE_ACTION_KEYS
+        ACTION_LABELS = saved_action_labels
+        ACTION_TO_IDX = {a: i for i, a in enumerate(ACTION_LABELS)}
+        IDX_TO_ACTION = {i: a for a, i in ACTION_TO_IDX.items()}
+        NUM_ACTIONS = saved_num_actions
+        STATE_DIM = saved_state_dim
+        # Keep state encoding keys aligned with training-time feature layout.
+        # Older checkpoints may not include explicit keys; fallback to action labels.
+        STATE_ACTION_KEYS = ckpt.get("state_action_keys", saved_action_labels)
+    
+    model = ActionPredictor(
+        state_dim=saved_state_dim, 
+        hidden_dim=hidden_dim, 
+        num_actions=saved_num_actions
+    ).to(DEVICE)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
@@ -464,6 +532,14 @@ def predict_action(
     image_tensor = transform(image).unsqueeze(0).to(DEVICE)
 
     state_tensor = ActionDataset._state_vector(state).unsqueeze(0).to(DEVICE)
+    # Defensive compatibility: if checkpoint metadata and runtime keys diverge,
+    # adapt vector size to the exact state_dim expected by the model.
+    current_state_dim = state_tensor.shape[1]
+    if current_state_dim < saved_state_dim:
+        pad = torch.zeros((1, saved_state_dim - current_state_dim), device=DEVICE)
+        state_tensor = torch.cat([state_tensor, pad], dim=1)
+    elif current_state_dim > saved_state_dim:
+        state_tensor = state_tensor[:, :saved_state_dim]
 
     # ── inference ────────────────────────────────────────────────────
     with torch.no_grad():
@@ -644,12 +720,29 @@ if __name__ == "__main__":
 # Entrenar
 python src/evaluation/llm.py train
 
+# Regenerar dataset desde métricas
+python src/evaluation/llm.py dataset
+
 # Evaluar
 python src/evaluation/llm.py eval
 
-# Predecir una acción
-python src/evaluation/llm.py predict --screenshot "src/metrics/agent_metrics/A7_screenshots/worldmodel_2026-02-15T15-58-38-838Z.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot "src/metrics/example.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot "src/metrics/example2.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
-python src/evaluation/llm.py predict --screenshot "src/metrics/example3.png" --state_json '{"x":10,"y":64,"z":-5,"action_counts":{"mine":3}}'
+# Predecir una acción (incluye x, y, z, yaw, pitch, action_counts)
+python src/evaluation/llm.py predict \
+  --screenshot "src/metrics/agent_metrics/A1_screenshots/control_2026-03-02T14-39-20-838Z.png" \
+  --state_json '{"x":10.5,"y":64.0,"z":-5.3,"yaw":1.234,"pitch":-0.456,"action_counts":{"mine_pressed":3,"forward_pressed":5}}'
+
+# Ejemplo mirando hacia el norte (yaw ≈ π/2)
+python src/evaluation/llm.py predict \
+  --screenshot "src/metrics/example.png" \
+  --state_json '{"x":0,"y":70,"z":0,"yaw":1.57,"pitch":0,"action_counts":{}}'
+
+# Ejemplo mirando hacia abajo para minar (pitch negativo)
+python src/evaluation/llm.py predict \
+  --screenshot "src/metrics/example2.png" \
+  --state_json '{"x":15,"y":64,"z":-20,"yaw":0,"pitch":-0.8,"action_counts":{"mine_pressed":10}}'
+
+# Ejemplo saltando (con historial de jumps)
+python src/evaluation/llm.py predict \
+  --screenshot "src/metrics/example3.png" \
+  --state_json '{"x":-5,"y":68,"z":12,"yaw":3.14,"pitch":0.2,"action_counts":{"jump_pressed":7,"forward_pressed":12}}'
 '''

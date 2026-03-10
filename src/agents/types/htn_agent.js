@@ -1,225 +1,209 @@
-
-
 import { BaseAgent } from './base_agent.js';
-import { serverProxy } from '../../llm/src/agent/mindserver_proxy.js';
-import { startHTN } from '../../htn/main_htn.js';
+import { startChopTrees, startHTN } from '../../htn/main_htn.js';
 import { MetricsCollector } from '../../metrics/metrics_collector.js';
+import { logInfo, logError } from '../logging.js';
+
+const FORCE_EXIT_TIMEOUT = 45000; // 45 seconds (15s screenshot flush + 30s buffer)
 
 export class HTNAgent extends BaseAgent {
     constructor(agentName) {
         super(agentName, `htn`);
-        // Recolect metrics specific to HTN execution
         this.metricsCollector = new MetricsCollector(agentName, `htn`);
         this.memoryPath = `src/agents/memories/${agentName}_memory.json`;
-        // Store signal handlers for cleanup
-        this.signalHandlers = [];
     }
 
     /**
      * Full startup sequence for HTN agent
-     * 
      * @param {Object} settings - Minecraft connection settings
-     * @param {number} viewerPort - Port for browser viewer
-     * @param {boolean} clearMemory - Clear previous memory if true
+     * @param {number} viewerPort - Port for browser viewer (prismarine)
      */
-    async start(settings, viewerPort, clearMemory = true) {
+    async start(settings, viewerPort) {
         try {
-            // Initialize metrics collection
-            await this.metricsCollector.initialize(
-                settings.metrics_export_path,
-                settings.task?.goal || `Default HTN progression`,
-                true,
-                viewerPort
-            );
-
-            // Clear/load memory
-            await this.clearMemory(clearMemory);
-
-            // Register with mindserver
-            console.log(`[INFO] [${this.name}] Registering with MindServer...`);
-            await serverProxy.connect(this.name, settings.mindserver_port || 8080);
-
-            // Connect to Minecraft
             await this.connectBot(settings);
-            
-            // Start metrics tracking
-            this.metricsCollector.startWorldTracking(this.bot);
+            await this._initializeMetrics(settings, viewerPort);
+            await this._setupTracking(viewerPort);
+            this._setupBotErrorHandlers();
 
-            // Setup viewer
-            this.setupViewer(viewerPort);
-
-            // Mock components required by getFullState
-            // Required by ServerProxy
-            this.bot.modes = { getMiniDocs: () => `HTN Mode` };
-            this.actions = { currentActionLabel: `HTN Task Execution` };
-
-            // Attach trackAction method to bot for HTN tasks
-            this.bot.trackAction = this.trackAction.bind(this);
-
-            // Handle graceful shutdown on Ctrl+C
-            const handleSIGINT = async () => {
-                console.log(`\n[INFO] [${this.name}] Received SIGINT, shutting down gracefully...`);
-                this.metricsCollector.recordError(`Interrupted by SIGINT`);
-                await this.metricsCollector.export(this.bot);
-                await this.shutdown();
-                process.exit(130); // Standard exit code for SIGINT
-            };
-            const handleSIGTERM = async () => {
-                console.log(`\n[INFO] [${this.name}] Received SIGTERM, shutting down gracefully...`);
-                this.metricsCollector.recordError(`Interrupted by SIGTERM`);
-                await this.metricsCollector.export(this.bot);
-                await this.shutdown();
-                process.exit(143); // Standard exit code for SIGTERM
-            };
-            process.on(`SIGINT`, handleSIGINT);
-            process.on(`SIGTERM`, handleSIGTERM);
-            this.signalHandlers = [
-                { signal: 'SIGINT', handler: handleSIGINT },
-                { signal: 'SIGTERM', handler: handleSIGTERM }
-            ];
-
-            // Handle bot disconnection during execution (keepalive timeout, kicked, etc.)
-            this.bot.on('error', (err) => {
-                console.error(`[ERROR] [${this.name}] Bot error during execution: ${err.message}`);
-                this.metricsCollector.recordError(`Bot error: ${err.message}`);
-                this.metricsCollector.completeTask(false);
-                this.metricsCollector.export(this.bot)
-                    .catch(() => {})
-                    .finally(() => {
-                        this.shutdown()
-                            .catch(() => {})
-                            .finally(() => process.exit(1));
-                    });
-            });
-            this.bot.on('kicked', (reason) => {
-                console.error(`[ERROR] [${this.name}] Bot kicked during execution: ${reason}`);
-                this.metricsCollector.recordError(`Bot kicked: ${reason}`);
-                this.metricsCollector.completeTask(false);
-                this.metricsCollector.export(this.bot)
-                    .catch(() => {})
-                    .finally(() => {
-                        this.shutdown()
-                            .catch(() => {})
-                            .finally(() => process.exit(1));
-                    });
-            });
-            this.bot.on('end', (reason) => {
-                console.warn(`[WARN] [${this.name}] Bot connection ended: ${reason}`);
-            });
-
-            // Start HTN logic
-            console.log(`[INFO] [${this.name}] Starting HTN execution...`);
-            const inventoryPort = viewerPort + 1000;
-            await this.runLogic(inventoryPort);
+            logInfo(this.name, `Starting HTN execution...`);
+            await this.runLogic();
 
         } catch (error) {
-            console.error(`[ERROR] [${this.name}] Failed to start:`, error.message);
+            logError(this.name, new Error(`Failed to start: ${error.message}`));
             this.metricsCollector.recordError(error.message);
-            await this.metricsCollector.export(this.bot);
-            await this.shutdown();
+            await this._exportAndShutdown();
             process.exit(1);
         }
     }
 
+    /**
+     * Initialize metrics collection
+     */
+    async _initializeMetrics(settings, viewerPort) {
+        const task = settings.task?.goal || `Default HTN progression`;
+        const metricsPath = settings.metrics_export_path || './metrics';
+        
+        try {
+            // No habilitar screenshots aquí; se habilitan solo si viewer arranca
+            await this.metricsCollector.initialize(
+                metricsPath,
+                task,
+                false,
+                null
+            );
+
+            await this.clearMemory();
+            logInfo(this.name, `Metrics initialized at ${metricsPath}`);
+        } catch (error) {
+            logError(this.name, new Error(`Metrics initialization failed: ${error.message}`));
+            throw error;
+        }
+    }
+
+    /**
+     * Setup world and control tracking
+     */
+    async _setupTracking(viewerPort) {
+        try {
+            logInfo(this.name, `Setting up tracking...`);
+            
+            const viewerOk = await this.setupViewer(viewerPort);
+            
+            // Pre-initialize the screenshot browser BEFORE starting tracking
+            // so the first action doesn't have a cold-start delay
+            if (viewerOk) {
+                logInfo(this.name, `Warming up screenshot browser...`);
+                this.metricsCollector.screenshotManager.enable(viewerPort);
+                const browserReady = await this.metricsCollector.warmupScreenshots();
+                if (browserReady) {
+                    logInfo(this.name, `Screenshot browser is ready`);
+                } else {
+                    logError(this.name, new Error(`Screenshot browser failed to warm up`));
+                }
+            }
+
+            logInfo(this.name, `Starting control tracking...`);
+            this.metricsCollector.startControlTracking(
+                this.bot,
+                150,       // poll interval — must be >= screenshot capture time (~100ms)
+                viewerOk,
+                viewerOk ? viewerPort : null
+            );
+        } catch (error) {
+            logError(this.name, new Error(`Tracking setup failed: ${error.message}`));
+            process.exit(1);
+        }
+    }
+
+    /**
+     * Setup bot error and disconnect handlers
+     */
+    _setupBotErrorHandlers() {
+        this.bot.on('error', (err) => {
+            logError(this.name, new Error(`Bot error: ${err.message}`));
+            this.metricsCollector.recordError(`Bot error: ${err.message}`);
+            this._handleBotDisconnect();
+        });
+
+        this.bot.on('kicked', (reason) => {
+            logError(this.name, new Error(`Bot kicked: ${reason}`));
+            this.metricsCollector.recordError(`Bot kicked: ${reason}`);
+            this._handleBotDisconnect();
+        });
+
+        this.bot.on('end', (reason) => {
+            console.warn(`[WARN] [${this.name}] Bot connection ended: ${reason}`);
+            this.metricsCollector.stopControlTracking();
+            // Stop new screenshot captures (existing queue will finish)
+            this.metricsCollector.stopScreenshots();
+        });
+    }
+
+    /**
+     * Handle bot disconnection with cleanup
+     */
+    async _handleBotDisconnect() {
+        this.metricsCollector.completeTask(false);
+        await this._exportAndShutdown();
+        process.exit(1);
+    }
 
     /**
      * Execute HTN task progression
-     * @param {number} inventoryPort - Port for inventory viewer (if used)
-     * @return {Promise<void>}
      */
-    async runLogic(inventoryPort = 3001) {
+    async runLogic() {
         try {
-            // startHTN is an async function that manages task execution
-            const result = await startHTN(this.bot, inventoryPort, this.metricsCollector);
-            
-            // Record final result in metrics
+            const result = await startChopTrees(this.bot);
             this.metricsCollector.completeTask(result?.success || false);
             
-            console.log(`[INFO] [${this.name}] HTN execution completed - Success: ${result?.success}`);
-            
-            // Safety net: force exit after 10 seconds if cleanup hangs
-            const forceExitTimeout = setTimeout(() => {
-                console.warn(`[WARN] [${this.name}] Cleanup timed out, forcing exit...`);
-                process.exit(0);
-            }, 10000);
-            forceExitTimeout.unref(); // Don't let this timer keep the process alive
-            
-            try {
-                await this.metricsCollector.export(this.bot);
-                console.log(`[INFO] [${this.name}] Metrics exported.`);
-            } catch (e) {
-                console.warn(`[WARN] [${this.name}] Metrics export failed: ${e.message}`);
-            }
+            logInfo(this.name, `HTN execution completed - Success: ${result?.success}`);
+            await this._cleanupAndExit(0);
 
-            try {
-                await this.shutdown();
-                console.log(`[INFO] [${this.name}] Shutdown complete.`);
-            } catch (e) {
-                console.warn(`[WARN] [${this.name}] Shutdown error: ${e.message}`);
-            }
-            
-            clearTimeout(forceExitTimeout);
-            console.log(`[INFO] [${this.name}] Exiting process...`);
-            process.exit(0);
-            
         } catch (error) {
             this.metricsCollector.recordError(error?.message || String(error));
             this.metricsCollector.completeTask(false);
             
-            console.error(`[ERROR] [${this.name}] HTN execution failed:`, error);
-            
-            // Safety net for error path too
-            const forceExitTimeout = setTimeout(() => {
-                console.warn(`[WARN] [${this.name}] Error cleanup timed out, forcing exit...`);
-                process.exit(1);
-            }, 10000);
-            forceExitTimeout.unref();
-            
-            try { await this.metricsCollector.export(this.bot); } catch (_) {}
-            try { await this.shutdown(); } catch (_) {}
-            
-            clearTimeout(forceExitTimeout);
-            process.exit(1);
+            logError(this.name, new Error(`HTN execution failed: ${error.message}`));
+            await this._cleanupAndExit(1);
         }
-    }         
+    }
+
+    /**
+     * Cleanup and exit with timeout protection
+     */
+    async _cleanupAndExit(exitCode) {
+        const forceExitTimeout = setTimeout(() => {
+            console.warn(`[WARN] [${this.name}] Cleanup timed out, forcing exit...`);
+            process.exit(exitCode);
+        }, FORCE_EXIT_TIMEOUT);
+        forceExitTimeout.unref();
+
+        await this._exportAndShutdown();
+        clearTimeout(forceExitTimeout);
+        
+        logInfo(this.name, `Exiting with code ${exitCode}`);
+        process.exit(exitCode);
+    }
+
+    /**
+     * Export metrics and shutdown
+     */
+    async _exportAndShutdown() {
+        try {
+            await this.metricsCollector.export(this.bot);
+            logInfo(this.name, `Metrics exported`);
+        } catch (error) {
+            console.warn(`[WARN] [${this.name}] Metrics export failed: ${error.message}`);
+        }
+
+        try {
+            await this.shutdown();
+            logInfo(this.name, `Shutdown complete`);
+        } catch (error) {
+            console.warn(`[WARN] [${this.name}] Shutdown error: ${error.message}`);
+        }
+    }
 
     /**
      * Track action (called by HTN primitives)
-     * @param {string} actionName - Name of the action being executed
-     * @return {void}
      */
-    async trackAction(actionName) {
-        this.metricsCollector.trackAction(actionName);
+    trackAction(actionName) {
+        this.metricsCollector.controlTracker?.trackAction(actionName);
     }
 
     /**
      * Shutdown HTN agent and cleanup resources
-     * @return {Promise<void>}
      */
     async shutdown() {
-        console.log(`[INFO] [${this.name}] Shutting down HTN agent...`);
-        
-        // Remove signal handlers to prevent interference
-        if (this.signalHandlers) {
-            for (const { signal, handler } of this.signalHandlers) {
-                process.removeListener(signal, handler);
-            }
-            this.signalHandlers = [];
-        }
-        
-        // Stop metrics tracking and close browser
-        await this.metricsCollector.stopWorldTracking();
-        
-        // Disconnect from MindServer
-        try {
-            await serverProxy.disconnect();
-        } catch (e) {
-            console.warn(`[WARN] [${this.name}] Error disconnecting from MindServer:`, e.message);
-        }
-        
-        // Call base shutdown to quit bot
+        logInfo(this.name, `Shutting down HTN agent...`);
+        this._stopTracking();
         await super.shutdown();
-        
-        console.log(`[INFO] [${this.name}] Shutdown complete`);
+        logInfo(this.name, `Shutdown complete`);
+    }
+
+    /**
+     * Stop all tracking
+     */
+    _stopTracking() {
+        this.metricsCollector.stopControlTracking();
     }
 }
