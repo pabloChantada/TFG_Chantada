@@ -8,6 +8,8 @@ import { ScreenshotManager } from './collector/screenshot.js'
 import { VersionManager } from './collector/version_manager.js'
 import { MetricsExporter } from './collector/export_metrics.js'
 
+const POLL_INTERVAL = 150 // ms
+
 export class MetricsCollector {
     constructor(agentName, agentType) {
         this.agentName = agentName
@@ -28,7 +30,6 @@ export class MetricsCollector {
             start_time: null,
             end_time: null,
             time_elapsed_s: 0,
-            steps_taken: 0,
             errors: []
         }
     }
@@ -57,9 +58,20 @@ export class MetricsCollector {
     // =========================================================================
 
     /**
+     * Pre-initialize the screenshot browser so first capture has no cold-start delay.
+     * Must be called AFTER enable() and BEFORE startControlTracking().
+     */
+    async warmupScreenshots() {
+        if (this.screenshotManager.isEnabled()) {
+            return await this.screenshotManager.warmup()
+        }
+        return false
+    }
+
+    /**
      * Start low-level control tracking
      */
-    startControlTracking(bot, pollInterval = 50, captureScreenshots = false, viewerPort = null) {
+    startControlTracking(bot, pollInterval = POLL_INTERVAL, captureScreenshots = false, viewerPort = null) {
         if (!bot) {
             console.warn('[MetricsCollector] Cannot start control tracking: bot not provided')
             return
@@ -91,6 +103,18 @@ export class MetricsCollector {
     }
 
     /**
+     * Check whether this run was configured to capture screenshots
+     */
+    hadScreenshotsEnabled() {
+        return this.screenshotManager.wasEnabled()
+    }
+    /**
+     * Stop screenshot capture (when bot disconnects)
+     */
+    stopScreenshots() {
+        this.screenshotManager.stop();
+    }
+    /**
      * Get control states (for external queries)
      */
     getControlStates() {
@@ -98,17 +122,24 @@ export class MetricsCollector {
     }
 
     /**
-     * Get control sequence
+     * Get RL action sequence
      */
-    getControlSequence(limit = null) {
-        return this.controlTracker?.getControlSequence(limit) || null
+    getRLActionSequence(limit = null) {
+        return this.controlTracker?.getRLActionSequence(limit) || null
     }
 
     /**
-     * Get control statistics
+     * Get current RL action state
      */
-    getControlStats() {
-        return this.controlTracker?.getControlStats() || null
+    getCurrentRLAction() {
+        return this.controlTracker?.getCurrentRLAction() || null
+    }
+
+    /**
+     * Get RL action statistics
+     */
+    getRLActionStats() {
+        return this.controlTracker?.getRLActionStats() || null
     }
 
         /**
@@ -198,27 +229,71 @@ export class MetricsCollector {
      */
     async export(bot = null) {
         try {
-            // Capture version and final state
+            console.log(`[${this.agentName}] ========== STARTING METRICS EXPORT ==========`)
+
+            // Freeze control/action recording before finalizing dataset export
+            this.stopControlTracking()
+            
+            // Capture version and final state (safe even if bot is partially disconnected)
             if (bot) {
-                const finalState = await this.getFinalState(bot)
-                Object.assign(this.metrics, finalState)
+                try {
+                    console.log(`[${this.agentName}] Capturing final bot state...`)
+                    const finalState = await this.getFinalState(bot)
+                    Object.assign(this.metrics, finalState)
+                    console.log(`[${this.agentName}] Final state captured`)
+                } catch (err) {
+                    console.warn(`[${this.agentName}] Final state capture failed: ${err.message}`)
+                }
             }
 
-            // Wait for pending screenshots
+            // Screenshots are captured synchronously with each action record,
+            // so there's nothing to flush. Just log stats.
+            if (this.screenshotManager.wasEnabled()) {
+                const tracker = this.controlTracker?.rlActionTracker
+                if (tracker) {
+                    console.log(`[${this.agentName}] Screenshot stats: ${tracker.capturedCount} captured, ${tracker.skippedCount} skipped`)
+                }
+            }
+
+            // Collect control tracking data (includes rl_actions with any screenshots)
             if (this.controlTracker) {
-                console.log(`[${this.agentName}] Waiting for pending screenshots...`)
-                await this.controlTracker.waitForPendingScreenshots()
+                console.log(`[${this.agentName}] Exporting control tracking data...`)
                 this.metrics.control_tracking = this.controlTracker.exportControlData()
+                console.log(`[${this.agentName}] Control tracking data ready`)
+            } else {
+                console.log(`[${this.agentName}] No control tracker active`)
             }
 
-            // Export JSON
-            await this.exporter.exportJSON(this.metrics)
+            // === CRITICAL: Export JSON (this MUST succeed) ===
+            console.log(`[${this.agentName}] Calling exporter.exportJSON()...`)
+            const exportResult = await this.exporter.exportJSON(this.metrics)
+            console.log(`[${this.agentName}] Export result:`, exportResult)
 
-            // Cleanup browser
-            await this.screenshotManager.cleanup()
+            // Cleanup browser (best-effort)
+            try {
+                await this.screenshotManager.cleanup()
+            } catch (err) {
+                console.warn(`[${this.agentName}] Screenshot cleanup failed: ${err.message}`)
+            }
+            
+            console.log(`[${this.agentName}] ========== METRICS EXPORT COMPLETE ==========`)
 
         } catch (error) {
-            console.error(`[${this.agentName}] Failed to export metrics:`, error.message)
+            console.error(`[${this.agentName}] ========== METRICS EXPORT FAILED ==========`)
+            console.error(`[${this.agentName}] Error:`, error.message)
+            console.error(`[${this.agentName}] Stack:`, error.stack)
+            
+            // Last-resort: try to export whatever metrics we have, without screenshots
+            try {
+                console.log(`[${this.agentName}] Attempting emergency JSON export...`)
+                if (this.controlTracker && !this.metrics.control_tracking) {
+                    this.metrics.control_tracking = this.controlTracker.exportControlData()
+                }
+                await this.exporter.exportJSON(this.metrics)
+                console.log(`[${this.agentName}] ✓ Emergency export succeeded`)
+            } catch (emergencyErr) {
+                console.error(`[${this.agentName}] Emergency export also failed: ${emergencyErr.message}`)
+            }
         }
     }
 }

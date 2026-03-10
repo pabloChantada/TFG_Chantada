@@ -19,7 +19,10 @@ export class ScreenshotManager {
         this.screenshotHeight = 768
         this.browser = null
         this.page = null
+        this._closed = false
+        this._capturing = false
         this.screenshotQueue = Promise.resolve(null)
+        this._everEnabled = false
     }
 
     /**
@@ -27,6 +30,7 @@ export class ScreenshotManager {
      */
     enable(viewerPort) {
         this.enabled = true
+        this._everEnabled = true
         this.viewerPort = viewerPort
         this.screenshotsDir = `src/metrics/agent_metrics/${this.agentName}_screenshots/`
         console.log(`[${this.agentName}] Screenshots enabled on port ${viewerPort}`)
@@ -40,10 +44,91 @@ export class ScreenshotManager {
     }
 
     /**
+     * Check if screenshots were ever enabled during this run
+     */
+    wasEnabled() {
+        return this._everEnabled
+    }
+
+    /**
+     * Stop screenshot capture (disable + keep wasEnabled history)
+     */
+    stop() {
+        this.enabled = false
+    }
+
+    /**
+     * Flush the screenshot queue, waiting for all pending captures
+     */
+    async flushQueue(timeoutMs = 5000) {
+        return Promise.race([
+            this.screenshotQueue,
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Screenshot flush timed out')), timeoutMs)
+            )
+        ])
+    }
+
+    /**
      * Check if screenshots are enabled
      */
     isEnabled() {
         return this.enabled && this.viewerPort
+    }
+
+    /**
+     * Pre-initialize browser so first screenshot doesn't have cold-start delay.
+     * Should be called during setup, before tracking starts.
+     * @returns {boolean} true if browser is ready
+     */
+    async warmup() {
+        if (!this.isEnabled()) return false
+        try {
+            await this.ensureDirectory()
+            await this.ensureBrowser()
+            const ready = !!(this.browser && this.page)
+            if (ready) {
+                console.log(`[${this.agentName}] Screenshot browser ready (warmed up)`)
+            }
+            return ready
+        } catch (err) {
+            console.warn(`[${this.agentName}] Screenshot warmup failed: ${err.message}`)
+            return false
+        }
+    }
+
+    /**
+     * Capture a screenshot immediately (blocking, no queue).
+     * Used by the synchronous recording loop.
+     * @returns {string|null} file path or null on failure
+     */
+    async captureNow() {
+        if (!this.isEnabled() || this._closed) return null
+        if (!this.browser || !this.page) return null
+
+        try {
+            const canvas = await this.page.$('canvas')
+            if (!canvas) return null
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+            const filename = `screenshot_${timestamp}.${this.screenshotFormat}`
+            const filePath = path.join(this.screenshotsDir, filename)
+
+            await canvas.screenshot({
+                path: filePath,
+                type: this.screenshotFormat
+            })
+
+            return filePath
+        } catch (error) {
+            // If the browser died, stop trying
+            if (error.message.includes('Target closed') ||
+                error.message.includes('Execution context was destroyed')) {
+                this.browser = null
+                this.page = null
+            }
+            return null
+        }
     }
 
     /**
@@ -70,18 +155,22 @@ export class ScreenshotManager {
             width: this.screenshotWidth, 
             height: this.screenshotHeight 
         })
-        // Wait for the viewer to be ready before capturing
+        // domcontentloaded is enough — the 3D viewer streams chunks forever
+        // so networkidle0 will always time out.
         await this.page.goto(`http://localhost:${this.viewerPort}`, { 
-            waitUntil: 'networkidle0' 
+            waitUntil: 'domcontentloaded',
+            timeout: 10000
         })
-        await this.page.waitForSelector('canvas')
+        await this.page.waitForSelector('canvas', { timeout: 10000 })
+        // Give the renderer a moment to draw the first real frame
+        await new Promise(r => setTimeout(r, 2000))
     }
 
     /**
      * Capture a single screenshot
      */
     async captureScreenshot() {
-        if (!this.isEnabled()) return null
+        if (!this.isEnabled() || this._closed) return null
 
         try {
             // Check we have everything ready
@@ -111,8 +200,11 @@ export class ScreenshotManager {
      * Queue a screenshot capture to avoid overlapping captures
      */
     async queueCapture() {
-        if (!this.isEnabled()) return null
-        this.screenshotQueue = this.screenshotQueue.then(() => this.captureScreenshot())
+        if (!this.isEnabled() || this._capturing) return null
+        this._capturing = true
+        this.screenshotQueue = this.screenshotQueue
+            .then(() => this.captureScreenshot())
+            .finally(() => { this._capturing = false })
         return this.screenshotQueue
     }
 
@@ -120,6 +212,8 @@ export class ScreenshotManager {
      * Close browser and cleanup
      */
     async cleanup() {
+        this._closed = true
+        this.enabled = false
         if (this.browser) {
             await this.browser.close()
             this.browser = null
