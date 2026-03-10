@@ -111,9 +111,7 @@ export class ControlAnalytics {
      */
     exportControlData() {
         return {
-            control_sequence: this.eventRecorder.getControlSequence(),
-            statistics: this.getControlStats(),
-            movement_patterns: this.getMovementPatterns()
+            statistics: this.getControlStats()
         }
     }
 }

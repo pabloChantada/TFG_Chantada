@@ -1,12 +1,13 @@
 /**
  * ControlTracker - Low-level control input tracking
- * Modular architecture: interception, recording, and analytics
+ * Modular architecture: interception, recording (RL actions), and analytics
  */
 
 import { CameraTracker } from './camera_tracker.js'
-import { EventRecorder } from './event.js'
 import { ControlAnalytics } from './analytics.js'
 import { ControlInterceptor } from './interceptor.js'
+import { RLActionTracker } from './rl_action_tracker.js'
+import { EventRecorder } from './event_recorder.js'
 import { getBotName } from '../utils.js'
 
 export class ControlTracker {
@@ -22,100 +23,150 @@ export class ControlTracker {
             right: false,
             jump: false,
             sprint: false,
-            sneak: false,  // Used when near an edge
+            sneak: false,
             mine: false,
             place: false,
-            openWindow: false,  // Using a furnace, chest, crafting table, etc. 
+            openWindow: false,
         }
 
-        // Initialize modules
-        // EventRecorder will handle recording control changes and capturing screenshots
-        this.eventRecorder = new EventRecorder(bot, this.cameraTracker, metricsCollector)
-        // ControlAnalytics will analyze the recorded control events for patterns and stats  
+        // RL action tracker (MultiDiscrete action space recording)
+        this.rlActionTracker = new RLActionTracker(bot, this.cameraTracker, metricsCollector)
+
+        // Event recorder for raw control sequence (analytics)
+        this.eventRecorder = new EventRecorder(bot, this.cameraTracker)
         this.analytics = new ControlAnalytics(this.eventRecorder)
-        // ControlInterceptor will hook into bot control state changes to trigger recording
+
+        // Interceptor hooks into bot methods to detect control changes
         this.interceptor = new ControlInterceptor(
             bot,
             this.controlStates,
-            (control, state) => this.eventRecorder.recordControlChange(control, state)
+            (control, state, detail) => this.eventRecorder.recordControlChange(control, state, detail),
+            (actionType, value) => this._handleRLAction(actionType, value)
         )
+
+        this.pollInterval = null
     }
 
     /**
-     * Start monitoring bot control states
+     * Handle RL action callbacks from interceptor
      */
-    start(pollInterval = 50) {
-        const botName = getBotName(this.bot)
-        console.log(`[ControlTracker] [${botName}] Control tracking enabled`)
-        console.log(`[ControlTracker] [${botName}] Monitoring setControlState() calls`)
+    _handleRLAction(actionType, value) {
+        switch (actionType) {
+            case 'attack':
+                this.rlActionTracker.updateAttackAction(value)
+                break
+            case 'craft':
+                this.rlActionTracker.updateCraftAction(value)
+                break
+            case 'smelt':
+                this.rlActionTracker.updateSmeltAction(value)
+                break
+            case 'place':
+                this.rlActionTracker.updatePlaceAction(value)
+                break
+            case 'equip':
+                this.rlActionTracker.updateEquipAction(value)
+                break
+        }
+    }
 
-        // Start to track control state changes 
+    /**
+     * Start monitoring bot control states.
+     * Uses an async loop so each tick awaits the screenshot capture.
+     */
+    start(pollInterval = 150) {
+        const botName = getBotName(this.bot)
+        const hasScreenshots = this.metrics?.captureScreenshots?.() || false
+
+        console.log(`[ControlTracker] [${botName}] RL action tracking enabled${hasScreenshots ? ' (with screenshots)' : ''}`)
+
+        // Start interceptor (hooks into bot.setControlState, placeBlock, etc.)
         this.interceptor.start(pollInterval)
+
+        // Async recording loop: awaits each tick so screenshot is synchronous with action
+        this._running = true
+        this._runLoop(pollInterval)
+    }
+
+    /**
+     * Async recording loop.
+     * Each iteration: update state → capture screenshot → record action → wait interval.
+     */
+    async _runLoop(interval) {
+        while (this._running) {
+            try {
+                this.rlActionTracker.updateMovementAction(this.controlStates)
+                this.rlActionTracker.updateCameraAction()
+                await this.rlActionTracker.recordAction()
+            } catch (err) {
+                // Don't crash the loop on transient errors
+            }
+            await new Promise(r => setTimeout(r, interval))
+        }
     }
 
     /**
      * Stop monitoring bot control states
      */
     stop() {
+        this._running = false
         this.interceptor.stop()
 
         const botName = getBotName(this.bot)
-        console.log(`[ControlTracker] [${botName}] Low-level control tracking stopped`)
+        console.log(`[ControlTracker] [${botName}] RL action tracking stopped`)
     }
 
     /**
-     * Get current state of a specific control
+     * Track a named high-level action (called by HTN primitives)
      */
+    trackAction(actionName) {
+        // Could be extended to map HTN action names to RL action updates
+    }
+
+    // --- State queries ---
+
     getControlState(control) {
         return this.controlStates[control] ?? false
     }
 
-    /**
-     * Get all current control states
-     */
     getAllControlStates() {
         return { ...this.controlStates }
     }
 
-    /**
-     * Get control event sequence
-     */
-    getControlSequence(limit = null) {
-        return this.eventRecorder.getControlSequence(limit)
+    // --- RL action queries ---
+
+    getRLActionSequence(limit = null) {
+        return this.rlActionTracker.getActionSequence(limit)
     }
 
-    /**
-     * Get control statistics
-     */
-    getControlStats() {
-        return this.analytics.getControlStats()
+    getCurrentRLAction() {
+        return this.rlActionTracker.getCurrentAction()
     }
 
+    getRLActionStats() {
+        return this.rlActionTracker.getActionStats()
+    }
+
+    // --- Export ---
+
     /**
-     * Get movement patterns
+     * Export all tracking data for metrics JSON.
      */
-    getMovementPatterns() {
-        return this.analytics.getMovementPatterns()
+    exportControlData() {
+        const rlData = this.rlActionTracker.exportForDataset(false)
+        const analyticsData = this.analytics.exportControlData()
+
+        return {
+            ...analyticsData,
+            rl_actions: rlData
+        }
     }
 
     /**
      * Reset sequence history
      */
     resetSequence() {
+        this.rlActionTracker.resetSequence()
         this.eventRecorder.resetSequence()
-    }
-
-    /**
-     * Export all control data
-     */
-    exportControlData() {
-        return this.analytics.exportControlData()
-    }
-
-    /**
-     * Wait for pending screenshots
-     */
-    async waitForPendingScreenshots() {
-        return this.eventRecorder.waitForPendingScreenshots()
     }
 }
