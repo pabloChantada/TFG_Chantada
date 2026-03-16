@@ -1,15 +1,9 @@
 """
-Simple RL training script for the Minecraft wood-chopping task.
+Simple imitation-learning script for the Minecraft wood-chopping task.
 
-Prerequisites:
-    1. Start Minecraft server with LAN open
-    2. Start the JS bot server:  node src/rl/server.js --mc_port <port>
-    3. Run this script:          python src/rl/train.py
-
-Supports:
-    - Random baseline
-    - PPO (via stable-baselines3)
-    - Imitation learning from recorded demos (behavioral cloning)
+First iteration scope:
+    - Behavioral cloning only (no RL training algorithms)
+    - CNN + state policy for action prediction
 """
 
 import sys
@@ -20,10 +14,8 @@ import numpy as np
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
 from PIL import Image
-import gymnasium as gym
-from gymnasium import spaces
 
 # Add src/rl to path for local imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -33,49 +25,6 @@ from env import MinecraftWoodEnv, MinecraftWoodSimpleEnv
 
 ACTION_DIMS_FULL = [3, 2, 3, 3, 5, 5, 2, 7, 2, 4, 5]
 ACTION_DIMS_SIMPLE = [3, 2, 3, 3, 5, 5, 2]
-
-
-class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
-    """Map MultiDiscrete action space to a single Discrete index (for DQN)."""
-
-    def __init__(self, env):
-        super().__init__(env)
-        if not isinstance(env.action_space, spaces.MultiDiscrete):
-            raise TypeError("MultiDiscreteToDiscreteActionWrapper requires MultiDiscrete action space")
-
-        self.nvec = np.array(env.action_space.nvec, dtype=np.int64)
-        self.action_space = spaces.Discrete(int(np.prod(self.nvec)))
-
-    def action(self, act):
-        act = int(act)
-        return np.array(np.unravel_index(act, tuple(self.nvec)), dtype=np.int64)
-
-
-def _prepare_env_for_algo(env, algo):
-    """Return environment adapted to the requested algorithm."""
-    algo = algo.lower()
-
-    if algo != "dqn":
-        return env
-
-    if isinstance(env.action_space, spaces.Discrete):
-        return env
-
-    if isinstance(env.action_space, spaces.MultiDiscrete):
-        wrapped = MultiDiscreteToDiscreteActionWrapper(env)
-        max_actions_for_dqn = 20_000
-        if wrapped.action_space.n > max_actions_for_dqn:
-            raise ValueError(
-                f"DQN with flattened MultiDiscrete has {wrapped.action_space.n} actions, "
-                f"too large for practical training. Use --simple or choose PPO/A2C."
-            )
-        return wrapped
-
-    raise ValueError(f"DQN only supports Discrete actions, got: {type(env.action_space)}")
-
-
-def _get_eval_env_for_model(model, fallback_env):
-    return getattr(model, "_rl_eval_env", fallback_env)
 
 
 def _state_to_obs13(state_dict):
@@ -138,71 +87,68 @@ def _load_image_tensor(image_path, image_size):
     return arr
 
 
-def load_imitation_dataset(jsonl_path, simple=False, use_images=False, image_size=84):
-    """Load data/train.jsonl for behavioral cloning (state-only or state+image)."""
-    if not os.path.exists(jsonl_path):
-        raise FileNotFoundError(f"Dataset not found: {jsonl_path}")
+class MinecraftBCDataset(Dataset):
+    """
+    Lazy-loading dataset for behavioral cloning.
+    Images are loaded from disk on demand — not all at once — so startup is fast
+    even with thousands of samples.
+    """
 
-    obs_list = []
-    img_list = []
-    act_list = []
+    def __init__(self, jsonl_path, simple=False, image_size=84):
+        if not os.path.exists(jsonl_path):
+            raise FileNotFoundError(f"Dataset not found: {jsonl_path}")
 
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
+        self.image_size = image_size
+        self.obs_list = []
+        self.img_paths = []
+        self.act_list = []
 
-            state = row.get("state", {})
-            action = row.get("action", None)
-            if not isinstance(action, list) or len(action) < 11:
-                continue
+        skipped = 0
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
 
-            obs = _state_to_obs13(state)
-            action = np.array(action[:7] if simple else action[:11], dtype=np.int64)
+                action = row.get("action", None)
+                if not isinstance(action, list) or len(action) < 11:
+                    skipped += 1
+                    continue
 
-            if use_images:
                 image_path = _resolve_image_path(row.get("image"), jsonl_path)
                 if not image_path or not os.path.exists(image_path):
+                    skipped += 1
                     continue
-                try:
-                    image = _load_image_tensor(image_path, image_size)
-                except Exception:
-                    continue
-                img_list.append(image)
 
-            obs_list.append(obs)
-            act_list.append(action)
+                obs = _state_to_obs13(row.get("state", {}))
+                act = np.array(action[:7] if simple else action[:11], dtype=np.int64)
 
-    if not obs_list:
-        raise RuntimeError("No valid rows found in imitation dataset")
+                self.obs_list.append(obs)
+                self.img_paths.append(image_path)
+                self.act_list.append(act)
 
-    X = torch.tensor(np.array(obs_list), dtype=torch.float32)
-    Y = torch.tensor(np.array(act_list), dtype=torch.long)
-    if use_images:
-        I = torch.tensor(np.array(img_list), dtype=torch.float32)
-        return X, I, Y
-    return X, Y
+        if not self.obs_list:
+            raise RuntimeError(
+                "No valid rows found in imitation dataset. "
+                f"Make sure images exist and actions have >= 11 dims. "
+                f"Skipped {skipped} rows."
+            )
 
+        print(f"  Dataset: {len(self.obs_list)} samples loaded "
+              f"({skipped} skipped, images loaded lazily)")
 
-class MultiHeadBC(nn.Module):
-    """Behavioral cloning policy for MultiDiscrete actions."""
+    def __len__(self):
+        return len(self.obs_list)
 
-    def __init__(self, obs_dim, action_dims):
-        super().__init__()
-        self.action_dims = list(action_dims)
-        self.backbone = nn.Sequential(
-            nn.Linear(obs_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
+    def __getitem__(self, idx):
+        obs = torch.tensor(self.obs_list[idx], dtype=torch.float32)
+        act = torch.tensor(self.act_list[idx], dtype=torch.long)
+        image = torch.tensor(
+            _load_image_tensor(self.img_paths[idx], self.image_size),
+            dtype=torch.float32
         )
-        self.heads = nn.ModuleList([nn.Linear(128, d) for d in self.action_dims])
-
-    def forward(self, x):
-        h = self.backbone(x)
-        return [head(h) for head in self.heads]
+        return obs, image, act
 
 
 class VisualStateMultiHeadBC(nn.Module):
@@ -245,77 +191,74 @@ class VisualStateMultiHeadBC(nn.Module):
 class BCPredictor:
     """Small adapter to reuse evaluate_model() API."""
 
-    def __init__(self, model, action_dims, device, use_images=False, image_size=84):
+    def __init__(self, model, action_dims, device, image_size=84, obs_dim=13):
         self.model = model
         self.action_dims = action_dims
         self.device = device
-        self.use_images = use_images
         self.image_size = image_size
+        self.obs_dim = int(obs_dim)
+
+    def _adapt_obs_dim(self, obs):
+        """Pad or truncate observation to match model input dimension."""
+        obs = np.asarray(obs, dtype=np.float32).reshape(-1)
+        if obs.shape[0] == self.obs_dim:
+            return obs
+        if obs.shape[0] > self.obs_dim:
+            return obs[: self.obs_dim]
+
+        out = np.zeros(self.obs_dim, dtype=np.float32)
+        out[: obs.shape[0]] = obs
+        return out
 
     def predict(self, obs, deterministic=True):
         _ = deterministic
+        obs = self._adapt_obs_dim(obs)
         x = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
-            if self.use_images:
-                # During online env eval we currently don't have RGB frames in env obs,
-                # so we pass a neutral image. Training still uses real screenshots.
-                neutral = torch.zeros((1, 3, self.image_size, self.image_size), dtype=torch.float32, device=self.device)
-                logits = self.model(x, neutral)
-            else:
-                logits = self.model(x)
+            # During online env eval we currently don't have RGB frames in env obs,
+            # so we pass a neutral image. Training still uses real screenshots.
+            neutral = torch.zeros((1, 3, self.image_size, self.image_size), dtype=torch.float32, device=self.device)
+            logits = self.model(x, neutral)
             action = [int(torch.argmax(h, dim=1).item()) for h in logits]
         return np.array(action, dtype=np.int64), None
 
 
 def train_bc(jsonl_path, save_path="models/bc_minecraft.pt", simple=False,
              epochs=20, batch_size=256, lr=1e-3,
-             use_images=False, image_size=84):
-    """Train behavioral cloning policy from recorded dataset."""
+             image_size=84):
+    """Train behavioral cloning policy from recorded dataset (CNN + state)."""
     print("=" * 50)
-    print("BEHAVIORAL CLONING" + (" (CNN + STATE)" if use_images else " (STATE ONLY)"))
+    print("BEHAVIORAL CLONING (CNN + STATE)")
     print("=" * 50)
 
     action_dims = ACTION_DIMS_SIMPLE if simple else ACTION_DIMS_FULL
-    if use_images:
-        X, I, Y = load_imitation_dataset(jsonl_path, simple=simple, use_images=True, image_size=image_size)
-        dataset = TensorDataset(X, I, Y)
-    else:
-        X, Y = load_imitation_dataset(jsonl_path, simple=simple, use_images=False, image_size=image_size)
-        dataset = TensorDataset(X, Y)
+    dataset = MinecraftBCDataset(jsonl_path, simple=simple, image_size=image_size)
 
     n_total = len(dataset)
     n_val = max(1, int(0.1 * n_total))
     n_train = n_total - n_val
     ds_train, ds_val = random_split(dataset, [n_train, n_val])
 
-    dl_train = DataLoader(ds_train, batch_size=batch_size, shuffle=True)
-    dl_val = DataLoader(ds_val, batch_size=batch_size, shuffle=False)
+    dl_train = DataLoader(ds_train, batch_size=batch_size, shuffle=True, num_workers=0)
+    dl_val = DataLoader(ds_val, batch_size=batch_size, shuffle=False, num_workers=0)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if use_images:
-        model = VisualStateMultiHeadBC(obs_dim=X.shape[1], action_dims=action_dims).to(device)
-    else:
-        model = MultiHeadBC(obs_dim=X.shape[1], action_dims=action_dims).to(device)
+    obs_dim = len(dataset.obs_list[0])
+    model = VisualStateMultiHeadBC(obs_dim=obs_dim, action_dims=action_dims).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     print(f"Samples: {n_total} (train={n_train}, val={n_val})")
-    print(f"Obs dim: {X.shape[1]}, Action dims: {action_dims}")
-    if use_images:
-        print(f"Image tensor: {tuple(I.shape[1:])}")
+    print(f"Obs dim: {obs_dim}, Action dims: {action_dims}")
+    print(f"Image size: {image_size}x{image_size}")
     print(f"Device: {device}")
 
     for ep in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
         for batch in dl_train:
-            if use_images:
-                xb, ib, yb = batch
-                xb, ib, yb = xb.to(device), ib.to(device), yb.to(device)
-                logits = model(xb, ib)
-            else:
-                xb, yb = batch
-                xb, yb = xb.to(device), yb.to(device)
-                logits = model(xb)
+            xb, ib, yb = batch
+            xb, ib, yb = xb.to(device), ib.to(device), yb.to(device)
+            logits = model(xb, ib)
             loss = sum(nn.functional.cross_entropy(logits[i], yb[:, i]) for i in range(len(action_dims)))
 
             optimizer.zero_grad()
@@ -331,14 +274,9 @@ def train_bc(jsonl_path, save_path="models/bc_minecraft.pt", simple=False,
         total = 0
         with torch.no_grad():
             for batch in dl_val:
-                if use_images:
-                    xb, ib, yb = batch
-                    xb, ib, yb = xb.to(device), ib.to(device), yb.to(device)
-                    logits = model(xb, ib)
-                else:
-                    xb, yb = batch
-                    xb, yb = xb.to(device), yb.to(device)
-                    logits = model(xb)
+                xb, ib, yb = batch
+                xb, ib, yb = xb.to(device), ib.to(device), yb.to(device)
+                logits = model(xb, ib)
                 loss = sum(nn.functional.cross_entropy(logits[i], yb[:, i]) for i in range(len(action_dims)))
                 val_loss += loss.item() * xb.size(0)
 
@@ -356,165 +294,29 @@ def train_bc(jsonl_path, save_path="models/bc_minecraft.pt", simple=False,
     torch.save({
         "state_dict": model.state_dict(),
         "action_dims": action_dims,
-        "obs_dim": int(X.shape[1]),
-        "use_images": bool(use_images),
+        "obs_dim": int(obs_dim),
+        "use_images": True,
         "image_size": int(image_size),
     }, save_path)
     print(f"\nBC model saved to {save_path}")
 
-    return BCPredictor(model, action_dims, device, use_images=use_images, image_size=image_size)
+    return BCPredictor(model, action_dims, device, image_size=image_size, obs_dim=obs_dim)
 
 
 def load_bc_model(path):
     """Load previously trained BC model."""
-    ckpt = torch.load(path, map_location="cpu")
+    ckpt = torch.load(path, map_location="cpu", weights_only=True)
     action_dims = ckpt["action_dims"]
     obs_dim = ckpt.get("obs_dim", 13)
-    use_images = bool(ckpt.get("use_images", False))
     image_size = int(ckpt.get("image_size", 84))
-    model = VisualStateMultiHeadBC(obs_dim=obs_dim, action_dims=action_dims) if use_images else MultiHeadBC(obs_dim=obs_dim, action_dims=action_dims)
+    model = VisualStateMultiHeadBC(obs_dim=obs_dim, action_dims=action_dims)
     model.load_state_dict(ckpt["state_dict"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device).eval()
-    return BCPredictor(model, action_dims, device, use_images=use_images, image_size=image_size)
+    return BCPredictor(model, action_dims, device, image_size=image_size, obs_dim=obs_dim)
 
 
-def run_random_baseline(env, episodes=10):
-    """Run random agent as a baseline."""
-    print("=" * 50)
-    print("RANDOM BASELINE")
-    print("=" * 50)
-
-    results = []
-    for ep in range(episodes):
-        obs, info = env.reset()
-        total_reward = 0
-        steps = 0
-        done = False
-
-        while not done:
-            action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
-            total_reward += reward
-            steps += 1
-            done = terminated or truncated
-
-        results.append({
-            "episode": ep + 1,
-            "steps": steps,
-            "reward": round(total_reward, 2),
-            "logs": info.get("logs_collected", 0),
-            "success": terminated and not truncated,
-        })
-        print(f"  Ep {ep+1:3d} | Steps: {steps:4d} | Reward: {total_reward:7.2f} | "
-              f"Logs: {info.get('logs_collected', '?')}")
-
-    avg_r = np.mean([r["reward"] for r in results])
-    successes = sum(r["success"] for r in results)
-    print(f"\nAvg reward: {avg_r:.2f} | Successes: {successes}/{episodes}")
-    return results
-
-def train_sb3(env, algo="ppo", total_timesteps=50_000, save_path="models/ppo_minecraft", device="cpu"):
-    """Train an SB3 algorithm with a compact unified entrypoint."""
-    try:
-        from stable_baselines3 import PPO, DQN, A2C
-    except ImportError:
-        print("ERROR: stable-baselines3 not installed.")
-        print("Install with: pip install stable-baselines3")
-        return None
-
-    algo = algo.lower()
-    print("=" * 50)
-    print(f"{algo.upper()} TRAINING — {total_timesteps} timesteps")
-    print("=" * 50)
-
-    model_env = _prepare_env_for_algo(env, algo)
-
-    if algo == "ppo":
-        model = PPO(
-            "MlpPolicy",
-            model_env,
-            device=device,
-            verbose=1,
-            learning_rate=3e-4,
-            n_steps=256,
-            batch_size=64,
-            n_epochs=10,
-            gamma=0.99,
-            ent_coef=0.01,
-            tensorboard_log="./logs/ppo_minecraft/",
-        )
-    elif algo == "dqn":
-        model = DQN(
-            "MlpPolicy",
-            model_env,
-            device=device,
-            verbose=1,
-            learning_rate=1e-4,
-            buffer_size=10000,
-            learning_starts=1000,
-            batch_size=64,
-            gamma=0.99,
-            target_update_interval=500,
-            tensorboard_log="./logs/dqn_minecraft/",
-        )
-    elif algo == "a2c":
-        model = A2C(
-            "MlpPolicy",
-            model_env,
-            device=device,
-            verbose=1,
-            learning_rate=7e-4,
-            n_steps=64,
-            gamma=0.99,
-            tensorboard_log="./logs/a2c_minecraft/",
-        )
-    else:
-        raise ValueError(f"Unsupported algorithm: {algo}")
-
-    model.learn(total_timesteps=total_timesteps)
-    model._rl_eval_env = model_env
-
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    model.save(save_path)
-    print(f"\nModel saved to {save_path}")
-    return model
-
-def benchmark_algorithms(env, algorithms, timesteps, episodes, device="cpu", model_dir="models"):
-    """Train + evaluate several algorithms in one run."""
-    print("=" * 50)
-    print("RL ALGORITHM BENCHMARK")
-    print("=" * 50)
-
-    summary = {}
-
-    # Baseline first
-    random_results = run_random_baseline(env, episodes=episodes)
-    summary["random"] = float(np.mean([r["reward"] for r in random_results]))
-
-    for algo in algorithms:
-        algo = algo.lower().strip()
-        if not algo:
-            continue
-        save_path = os.path.join(model_dir, f"{algo}_minecraft")
-        model = train_sb3(env, algo=algo, total_timesteps=timesteps, save_path=save_path, device=device)
-        if model is None:
-            summary[algo] = None
-            continue
-        results = evaluate_model(_get_eval_env_for_model(model, env), model, episodes=episodes)
-        summary[algo] = float(np.mean([r["reward"] for r in results]))
-
-    print("\n" + "-" * 50)
-    print("Benchmark summary (avg reward):")
-    for name, value in summary.items():
-        label = "N/A" if value is None else f"{value:.2f}"
-        print(f"  {name:>8s}: {label}")
-    print("-" * 50)
-
-    return summary
-
-
-def evaluate_model(env, model, episodes=10):
+def evaluate_model(env, model, episodes=10, max_steps=300, progress_every=50):
     """Evaluate a trained model."""
     print("=" * 50)
     print("EVALUATION")
@@ -532,7 +334,14 @@ def evaluate_model(env, model, episodes=10):
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
             steps += 1
-            done = terminated or truncated
+            timeout_reached = steps >= max_steps
+            done = terminated or truncated or timeout_reached
+
+            if progress_every > 0 and steps % progress_every == 0 and not done:
+                print(f"    Ep {ep+1:3d} | step {steps:4d} | running_reward={total_reward:7.2f}")
+
+        if steps >= max_steps:
+            print(f"    Ep {ep+1:3d} reached max_steps={max_steps}, truncating eval episode.")
 
         results.append({"episode": ep + 1, "steps": steps, "reward": round(total_reward, 2)})
         print(f"  Ep {ep+1:3d} | Steps: {steps:4d} | Reward: {total_reward:7.2f}")
@@ -543,25 +352,19 @@ def evaluate_model(env, model, episodes=10):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Minecraft RL Training")
-    parser.add_argument("--mode", choices=["random", "ppo", "dqn", "a2c", "eval", "bc", "bc_eval", "bench"], default="random",
+    parser = argparse.ArgumentParser(description="Minecraft Imitation Learning (CNN + state)")
+    parser.add_argument("--mode", choices=["bc", "bc_eval"], default="bc",
                         help="Training mode")
     parser.add_argument("--server", default="http://localhost:3001",
                         help="JS bot server URL")
     parser.add_argument("--episodes", type=int, default=10,
-                        help="Number of episodes (for random/eval)")
-    parser.add_argument("--timesteps", type=int, default=500,
-                        help="Total timesteps for RL training")
+                        help="Number of episodes (for bc_eval)")
+    parser.add_argument("--eval_max_steps", type=int, default=300,
+                        help="Max steps per evaluation episode (bc_eval)")
     parser.add_argument("--simple", action="store_true",
                         help="Use simplified wood-only action space (7 dims)")
-    parser.add_argument("--model_path", default="models/dqn_minecraft",
+    parser.add_argument("--model_path", default="models/bc_minecraft.pt",
                         help="Path to save/load model")
-    parser.add_argument("--algo", default="dqn", choices=["ppo", "dqn", "a2c"],
-                        help="Algorithm to use in eval mode")
-    parser.add_argument("--algorithms", default="ppo,dqn,a2c",
-                        help="Comma-separated algorithms for --mode bench")
-    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"],
-                        help="Device for PPO training/eval (default: cpu)")
     parser.add_argument("--jsonl", default="data/train_balanced.jsonl",
                         help="Imitation dataset path (JSONL)")
     parser.add_argument("--bc_epochs", type=int, default=20,
@@ -570,70 +373,35 @@ def main():
                         help="Behavioral cloning batch size")
     parser.add_argument("--bc_lr", type=float, default=1e-3,
                         help="Behavioral cloning learning rate")
-    parser.add_argument("--use_images", action="store_true", default=True,
-                        help="Use dataset screenshots with a CNN during BC")
     parser.add_argument("--image_size", type=int, default=84,
                         help="Image size for CNN BC (square)")
     args = parser.parse_args()
 
-    # Create environment
-    EnvClass = MinecraftWoodSimpleEnv if args.simple else MinecraftWoodEnv
-    env = EnvClass(server_url=args.server)
-
     try:
-        # Check server connectivity
-        info = env.get_server_info()
-        print(f"Connected to server: {args.server}")
-        print(f"Action space: MultiDiscrete({list(info['action_space'])})")
-        print(f"Observation dim: {info['observation_dim']}")
-        print()
-
-        if args.mode == "random":
-            run_random_baseline(env, args.episodes)
-
-        elif args.mode in {"ppo", "dqn", "a2c"}:
-            model = train_sb3(env, algo=args.mode, total_timesteps=args.timesteps, save_path=args.model_path, device=args.device)
-            if model:
-                evaluate_model(_get_eval_env_for_model(model, env), model, args.episodes)
-
-        elif args.mode == "eval":
-            from stable_baselines3 import PPO, DQN, A2C
-            if args.algo == "ppo":
-                model = PPO.load(args.model_path, device=args.device)
-            elif args.algo == "dqn":
-                model = DQN.load(args.model_path, device=args.device)
-                model._rl_eval_env = _prepare_env_for_algo(env, "dqn")
-            else:
-                model = A2C.load(args.model_path, device=args.device)
-            evaluate_model(_get_eval_env_for_model(model, env), model, args.episodes)
-
-        elif args.mode == "bc":
-            bc_model = train_bc(
+        if args.mode == "bc":
+            train_bc(
                 jsonl_path=args.jsonl,
                 save_path=args.model_path,
                 simple=args.simple,
                 epochs=args.bc_epochs,
                 batch_size=args.bc_batch_size,
                 lr=args.bc_lr,
-                use_images=args.use_images,
                 image_size=args.image_size,
             )
-            evaluate_model(env, bc_model, args.episodes)
 
         elif args.mode == "bc_eval":
-            bc_model = load_bc_model(args.model_path)
-            evaluate_model(env, bc_model, args.episodes)
+            EnvClass = MinecraftWoodSimpleEnv if args.simple else MinecraftWoodEnv
+            env = EnvClass(server_url=args.server)
 
-        elif args.mode == "bench":
-            algos = [a.strip() for a in args.algorithms.split(",") if a.strip()]
-            benchmark_algorithms(
-                env,
-                algorithms=algos,
-                timesteps=args.timesteps,
-                episodes=args.episodes,
-                device=args.device,
-                model_dir=os.path.dirname(args.model_path) or "models",
-            )
+            info = env.get_server_info()
+            print(f"Connected to server: {args.server}")
+            print(f"Action space: MultiDiscrete({list(info['action_space'])})")
+            print(f"Observation dim: {info['observation_dim']}")
+            print()
+
+            bc_model = load_bc_model(args.model_path)
+            evaluate_model(env, bc_model, args.episodes, max_steps=args.eval_max_steps)
+            env.close()
 
     except KeyboardInterrupt:
         print("\nInterrupted.")
@@ -641,7 +409,7 @@ def main():
         print(f"\nError: {e}")
         raise
     finally:
-        env.close()
+        pass
 
 
 if __name__ == "__main__":

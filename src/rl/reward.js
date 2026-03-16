@@ -25,7 +25,7 @@ import { isLog, getLogCount } from './state.js'
 export const DEFAULT_REWARD_CONFIG = {
     targetLogs: 5,
     logCollectedReward: 10.0,
-    lookingAtLogReward: 0.1,
+    lookingAtLogReward: 0.5,
     stepPenalty: -0.01,
     damagePenalty: -1.0,
     miningLogReward: 0.5,
@@ -53,19 +53,19 @@ export function computeReward(prevState, currState, bot, config = DEFAULT_REWARD
         console.log(`[RL-REWARD] +${logsDelta} logs collected! Reward: +${logReward.toFixed(2)}`)
     }
     
-    // IMPORTANT: On negative delta (dropped/consumed logs), no penalty
+    // On negative delta (dropped/consumed logs), no penalty
     // This allows the environment to clear inventory between episodes
     if (logsDelta < 0) {
         console.log(`[RL-REWARD] Log count decreased by ${Math.abs(logsDelta)} (inventory cleared or consumed)`)
     }
 
-    // 2. Looking at log (shaping reward - helps the agent learn to orient toward trees)
+    // Looking at log (shaping reward - helps the agent learn to orient toward trees)
     if (currState.lookingAtLog) {
         reward += config.lookingAtLogReward
         info.components.looking_at_log = config.lookingAtLogReward
     }
 
-    // 3. Actively mining a log (shaping)
+    // Actively mining a log (shaping)
     if (bot.targetDigBlock && isLog(bot.targetDigBlock.name)) {
         reward += config.miningLogReward
         info.components.mining_log = config.miningLogReward
@@ -79,13 +79,6 @@ export function computeReward(prevState, currState, bot, config = DEFAULT_REWARD
         reward += dmgPenalty
         info.components.damage = dmgPenalty
     }
-
-    // 5. Episode termination
-    // Success if we've collected the target number of NEW logs this episode
-    // Success if we've collected the target number of NEW logs this episode
-    // Note: If the agent gets stuck mining stone instead of logs, 
-    // you may want to add a max_steps limit to restart the episode
-
 
     const done = currState.logCount >= config.targetLogs
 

@@ -41,7 +41,8 @@ export class ControlTracker {
             bot,
             this.controlStates,
             (control, state, detail) => this.eventRecorder.recordControlChange(control, state, detail),
-            (actionType, value) => this._handleRLAction(actionType, value)
+            (actionType, value) => this._handleRLAction(actionType, value),
+            metricsCollector
         )
 
         this.pollInterval = null

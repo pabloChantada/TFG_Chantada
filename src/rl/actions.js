@@ -31,6 +31,7 @@ const CRAFT_ITEMS = [null, 'oak_planks', 'stick', 'crafting_table', 'wooden_pick
 const SMELT_ITEMS = [null, 'iron_ingot']
 const PLACE_ITEMS = [null, 'crafting_table', 'furnace', 'torch']
 const EQUIP_ITEMS = [null, 'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'wooden_axe']
+const PRE_ACTION_WAIT_MS = 180
 
 /**
  * Apply a MultiDiscrete action vector to the bot.
@@ -45,6 +46,10 @@ export async function applyMultiDiscreteAction(bot, action) {
     await releaseAllControls(bot)
 
     // ── Movement ──
+    if (fwd !== 0 || back !== 0 || lateral !== 0 || vertical !== 0) {
+        await waitBeforeAction()
+    }
+
     if (fwd === 1) {
         bot.setControlState('forward', true)
     } else if (fwd === 2) {
@@ -83,6 +88,7 @@ export async function applyMultiDiscreteAction(bot, action) {
     else if (pitch === 4) pitchDelta = -DEG45
 
     if (yawDelta !== 0 || pitchDelta !== 0) {
+        await waitBeforeAction()
         const newYaw = bot.entity.yaw + yawDelta
         const newPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, bot.entity.pitch + pitchDelta))
         await bot.look(newYaw, newPitch, false)
@@ -90,28 +96,37 @@ export async function applyMultiDiscreteAction(bot, action) {
 
     // ── Attack (mine block at cursor — non-omniscient raycast) ──
     if (attack === 1) {
+        await waitBeforeAction()
         await tryMine(bot)
     }
 
     // ── Craft ──
     if (craft > 0 && craft < CRAFT_ITEMS.length) {
+        await waitBeforeAction()
         await tryCraft(bot, CRAFT_ITEMS[craft])
     }
 
     // ── Smelt ──
     if (smelt > 0 && smelt < SMELT_ITEMS.length) {
+        await waitBeforeAction()
         await trySmelt(bot, SMELT_ITEMS[smelt])
     }
 
     // ── Place ──
     if (place > 0 && place < PLACE_ITEMS.length) {
+        await waitBeforeAction()
         await tryPlace(bot, PLACE_ITEMS[place])
     }
 
     // ── Equip ──
     if (equip > 0 && equip < EQUIP_ITEMS.length) {
+        await waitBeforeAction()
         await tryEquip(bot, EQUIP_ITEMS[equip])
     }
+}
+
+function waitBeforeAction() {
+    return new Promise(resolve => setTimeout(resolve, PRE_ACTION_WAIT_MS))
 }
 
 /**

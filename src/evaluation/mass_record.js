@@ -135,15 +135,15 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
             const success = code === 0
 
             if (success) {
-                console.log(`✓ Episode ${episode} completed in ${duration}s`)
+                console.log(`Episode ${episode} completed in ${duration}s`)
             } else {
-                console.warn(`✗ Episode ${episode} exited with code ${code} after ${duration}s`)
+                console.warn(`Episode ${episode} exited with code ${code} after ${duration}s`)
             }
 
             // Check if metrics file was created
             const metricsExists = fs.existsSync(metricsPath)
             if (!metricsExists) {
-                console.warn(`  ⚠ No metrics file found at ${metricsPath}`)
+                console.warn(`  No metrics file found at ${metricsPath}`)
             }
 
             resolve({ success, duration_s: parseFloat(duration), metricsExists })
@@ -152,14 +152,14 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
         child.on('error', (err) => {
             if (settled) return
             settled = true
-            console.error(`✗ Episode ${episode} spawn error: ${err.message}`)
+            console.error(`Episode ${episode} spawn error: ${err.message}`)
             resolve({ success: false, duration_s: 0, metricsExists: false })
         })
 
         // Safety timeout: kill agent if it takes too long (5 minutes)
         const timeout = setTimeout(() => {
             if (!settled) {
-                console.warn(`⚠ Episode ${episode} timed out, killing...`)
+                console.warn(`Episode ${episode} timed out, killing...`)
                 child.kill('SIGTERM')
             }
         }, 5 * 60 * 1000)

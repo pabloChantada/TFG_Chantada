@@ -9,6 +9,17 @@ function getBlockId(mcData, blockName) {
     return mcData.blocksByName[blockName]?.id
 }
 
+// Approximate player-like field of view (degrees)
+const HORIZONTAL_FOV_DEG = 90
+const VERTICAL_FOV_DEG = 60
+
+function normalizeAngleRad(angle) {
+    let a = angle
+    while (a > Math.PI) a -= 2 * Math.PI
+    while (a < -Math.PI) a += 2 * Math.PI
+    return a
+}
+
 /**
  * Finds the nearest block of a given type within a specified distance.
  * WARNING: This is an omniscient search — it finds blocks even if buried underground.
@@ -91,11 +102,52 @@ function hasLineOfSight(bot, blockPos) {
 }
 
 /**
+ * Checks if a block lies inside the bot's camera vision cone.
+ *
+ * We model a realistic player-like FOV using current yaw/pitch:
+ * - Horizontal cone: ±45° (90° total)
+ * - Vertical cone:   ±30° (60° total)
+ *
+ * @param {Bot} bot - The mineflayer bot instance.
+ * @param {Vec3} blockPos - The block position to check.
+ * @param {number} horizontalFovDeg - Horizontal FOV in degrees.
+ * @param {number} verticalFovDeg - Vertical FOV in degrees.
+ * @returns {boolean} - True if the block is inside the current vision cone.
+ */
+function isInVisionCone(
+    bot,
+    blockPos,
+    horizontalFovDeg = HORIZONTAL_FOV_DEG,
+    verticalFovDeg = VERTICAL_FOV_DEG
+) {
+    const eyePos = bot.entity.position.offset(0, 1.62, 0)
+    const blockCenter = blockPos.offset(0.5, 0.5, 0.5)
+    const direction = blockCenter.minus(eyePos)
+    const distance = direction.norm()
+
+    // Very close blocks are considered visible regardless of camera cone
+    if (distance < 1.5) return true
+
+    // Target camera angles from eye -> block center
+    const targetYaw = Math.atan2(-direction.x, -direction.z)
+    const targetPitch = Math.asin(Math.max(-1, Math.min(1, direction.y / distance)))
+
+    const yawDiff = Math.abs(normalizeAngleRad(targetYaw - bot.entity.yaw))
+    const pitchDiff = Math.abs(targetPitch - bot.entity.pitch)
+
+    const maxYaw = (horizontalFovDeg * Math.PI / 180) / 2
+    const maxPitch = (verticalFovDeg * Math.PI / 180) / 2
+
+    return yawDiff <= maxYaw && pitchDiff <= maxPitch
+}
+
+/**
  * Finds the nearest block that the bot can actually SEE (non-omniscient).
  * 
- * Two-stage filter:
+ * Three-stage filter:
  *   1. isBlockExposed — block has at least one face adjacent to air (cheap check)
- *   2. hasLineOfSight — unobstructed raycast from bot's eyes to the block (same as RL)
+ *   2. isInVisionCone — block must be inside camera FOV cone (player-like perception)
+ *   3. hasLineOfSight — unobstructed raycast from bot's eyes to the block (same as RL)
  * 
  * This means the bot CANNOT find blocks in:
  *   - Unvisited caves (wall between bot and block)
@@ -121,7 +173,9 @@ function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32) {
     for (const pos of positions) {
         // Stage 1: cheap check — does the block have an exposed face?
         if (!isBlockExposed(bot, pos)) continue
-        // Stage 2: expensive check — can the bot actually see it from here?
+        // Stage 2: block must be inside current camera vision cone
+        if (!isInVisionCone(bot, pos)) continue
+        // Stage 3: expensive check — can the bot actually see it from here?
         if (!hasLineOfSight(bot, pos)) continue
 
         return bot.blockAt(pos)
@@ -135,5 +189,6 @@ export {
     findNearestBlock,
     findNearestVisibleBlock,
     isBlockExposed,
-    hasLineOfSight
+    hasLineOfSight,
+    isInVisionCone
 }

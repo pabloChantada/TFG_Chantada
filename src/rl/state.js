@@ -52,7 +52,6 @@ export function getLogCount(bot) {
  *   [9]  health
  *   [10] food_level
  *   [11] cursor_block_distance (0-4.5, 0 if no block)
- *   [12] time_of_day (0-1)
  * 
  * @param {import('mineflayer').Bot} bot 
  * @returns {{ vector: number[], meta: object }}
@@ -85,7 +84,6 @@ export function extractState(bot) {
         round((bot.health || 20) / 20, 2),         // [9] health normalized
         round((bot.food || 20) / 20, 2),           // [10] food normalized
         round(cursorDist / 4.5, 3),                // [11] cursor distance normalized
-        round((bot.time?.timeOfDay || 0) / 24000, 3) // [12] time of day
     ]
 
     const meta = {
@@ -101,6 +99,9 @@ export function extractState(bot) {
 }
 
 export const STATE_DIM = 13
+
+// External function since JavaScript doesn't have built-in rounding to decimals
+// It has ToFixed but that returns a string, so we implement our own rounding function.
 
 function round(num, decimals) {
     return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals)
