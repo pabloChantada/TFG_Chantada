@@ -1,0 +1,35 @@
+"""
+YOLOv8 Tree Detector para bot Minecraft.
+INFO para bot: coordenadas árboles + confianza.
+
+
+DATASET: https://universe.roboflow.com/project-rslmo/minecraft-tree-detection-qrp0d
+"""
+from ultralytics import YOLO
+from pathlib import Path
+import torch
+
+class YOLOTreeDetector:
+    def __init__(self, model_path=None):
+        self.model_path = model_path or "runs/detect/minecraft_trees/weights/best.pt"
+        self.model = YOLO(self.model_path)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model.to(self.device)
+    
+    def predict(self, image_path):
+        """
+        Devuelve lista de árboles detectados con formato:
+        [{"bbox": [x1,y1,x2,y2], "confidence": 0.85}, ...]
+        Esto lo podemos usar para que el bot mueva la camara hacia el árbol más cercano.
+        Usando los radianes
+        """
+        results = self.model(image_path)
+        
+        trees = []
+        for box in results[0].boxes:
+            x1, y1, x2, y2 = box.xyxy[0].cpu().tolist()
+            conf = box.conf[0].cpu().item()
+            trees.append({"bbox": [x1,y1,x2,y2], "confidence": conf})
+        
+        print(f"Detectados {len(trees)} árboles")
+        return trees

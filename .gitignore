@@ -99,3 +99,9 @@ src/evaluation/plots/*.png
 src/evaluation/README_VAE.mddata/*
 data/*.jsonl
 data/**/*.json
+
+# YOLO
+runs/*
+data/Minecraft Tree Detection.yolov8/
+*.pt
+__pycache__/
