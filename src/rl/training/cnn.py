@@ -9,10 +9,43 @@ from ultralytics import YOLO
 from pathlib import Path
 import torch
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_MODEL_PATH = PROJECT_ROOT / "runs" / "detect" / "minecraft_trees" / "weights" / "best.pt"
+
+
+def _find_latest_best_weights() -> Path:
+    weights = sorted(
+        (PROJECT_ROOT / "runs" / "detect").glob("*/weights/best.pt"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not weights:
+        raise FileNotFoundError(
+            f"No se encontró ningún modelo YOLO en {(PROJECT_ROOT / 'runs' / 'detect')}"
+        )
+    return weights[0]
+
+
+def _resolve_model_path(model_path=None) -> Path:
+    if model_path:
+        candidate = Path(model_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        candidate = candidate.resolve()
+        if not candidate.exists():
+            raise FileNotFoundError(f"No existe el modelo YOLO especificado: {candidate}")
+        return candidate
+
+    if DEFAULT_MODEL_PATH.exists():
+        return DEFAULT_MODEL_PATH
+
+    return _find_latest_best_weights()
+
 class YOLOTreeDetector:
     def __init__(self, model_path=None):
-        self.model_path = model_path or "runs/detect/minecraft_trees/weights/best.pt"
-        self.model = YOLO(self.model_path)
+        self.model_path = _resolve_model_path(model_path)
+        self.model = YOLO(str(self.model_path))
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
     

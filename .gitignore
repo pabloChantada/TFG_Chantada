@@ -105,3 +105,4 @@ runs/*
 data/Minecraft Tree Detection.yolov8/
 *.pt
 __pycache__/
+.gradio
