@@ -29,7 +29,7 @@ export class ControlTracker {
             openWindow: false,
         }
 
-        // RL action tracker (MultiDiscrete action space recording)
+        // RL action tracker (direct discrete action recording)
         this.rlActionTracker = new RLActionTracker(bot, this.cameraTracker, metricsCollector)
 
         // Event recorder for raw control sequence (analytics)
@@ -55,15 +55,6 @@ export class ControlTracker {
         switch (actionType) {
             case 'attack':
                 this.rlActionTracker.updateAttackAction(value)
-                break
-            case 'craft':
-                this.rlActionTracker.updateCraftAction(value)
-                break
-            case 'smelt':
-                this.rlActionTracker.updateSmeltAction(value)
-                break
-            case 'place':
-                this.rlActionTracker.updatePlaceAction(value)
                 break
             case 'equip':
                 this.rlActionTracker.updateEquipAction(value)

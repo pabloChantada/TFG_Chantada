@@ -7,45 +7,128 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 import torchvision.transforms as T
 import numpy as np
+import copy
+import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-ACTIONS = {
-    0: "move_forward",  # 0=still, 1=walk, 2=sprint
-    1: "move_backward", # 0=still, 1=walk
-    2: "move_lateral",  # 0=still, 1=left, 2=right
-    3: "move_vertical", # 0=still, 1=jump, 2=sneak
-    4: "camera_yaw",    # 0=none, 1=+15°, 2=-15°, 3=+45°, 4=-45°
-    5: "camera_pitch",  # 0=none, 1=+15°, 2=-15°, 3=+45°, 4=-45°
-    6: "attack",        # 0=no, 1=yes
-    7: "craft",         # 0=none,1=planks,2=stick,3=crafting_table,4=wpick,5=spick,6=ipick
-    8: "smelt",         # 0=none, 1=iron_ingot
-    9: "place",         # 0=none, 1=crafting_table, 2=furnace, 3=torch
-    10: "equip"         # 0=none, 1=wpick, 2=spick, 3=ipick, 4=axe
-}
+ACTIONS = [
+    "idle",
+    "move_forward_walk",
+    "move_forward_sprint",
+    "move_backward_walk",
+    "move_left",
+    "move_right",
+    "jump",
+    "sneak",
+    "camera_yaw_p15",
+    "camera_yaw_m15",
+    "camera_yaw_p45",
+    "camera_yaw_m45",
+    "camera_pitch_p15",
+    "camera_pitch_m15",
+    "camera_pitch_p45",
+    "camera_pitch_m45",
+    "attack",
+    "equip_wooden_axe",
+]
 
 BATCH_SIZE = 32
 
-# Definimos un par especial para idle (todo ceros)
-IDLE_PAIR = ("idle", 0)
+# Definimos una etiqueta especial para idle
+IDLE_ACTION = "idle"
 
-# TODO: cambiar lo de >1 cuando hagamos que la camra se mueva en un solo eje
-def vector_to_pair(action):
+
+def vector_to_action_label(action):
     """
-    action: lista o array de 11 ints
-    Devuelve:
-      - ("idle", 0) si todo es 0
-      - (slot, valor) si hay una posición != 0
+    action: lista o array de 11 ints (legacy multidiscrete)
+    Devuelve una etiqueta discreta única.
     """
-    # i -> accion a tomar, v -> valor de esa accion. i.e: (0,2) -> move_forward=2 (sprint), (4,3) -> camera_yaw=+45°
-    nonzero = [(i, v) for i, v in enumerate(action) if v != 0]
-    if len(nonzero) == 0:
-        return IDLE_PAIR
-    else:
-        # si hubiera >1, nos quedamos con la primera por simplicidad
-        return tuple(nonzero[0])  # (slot, valor)
+    try:
+        move_forward = int(action[0])
+        move_backward = int(action[1])
+        move_lateral = int(action[2])
+        move_vertical = int(action[3])
+        camera_yaw = int(action[4])
+        camera_pitch = int(action[5])
+        attack = int(action[6])
+        equip = int(action[10])
+    except Exception:
+        return IDLE_ACTION
+
+    # Prioridad igual que en el tracker
+    if attack == 1:
+        return "attack"
+    if equip == 4:
+        return "equip_wooden_axe"
+
+    if camera_yaw == 1:
+        return "camera_yaw_p15"
+    if camera_yaw == 2:
+        return "camera_yaw_m15"
+    if camera_yaw == 3:
+        return "camera_yaw_p45"
+    if camera_yaw == 4:
+        return "camera_yaw_m45"
+
+    if camera_pitch == 1:
+        return "camera_pitch_p15"
+    if camera_pitch == 2:
+        return "camera_pitch_m15"
+    if camera_pitch == 3:
+        return "camera_pitch_p45"
+    if camera_pitch == 4:
+        return "camera_pitch_m45"
+
+    if move_forward == 2:
+        return "move_forward_sprint"
+    if move_forward == 1:
+        return "move_forward_walk"
+    if move_backward == 1:
+        return "move_backward_walk"
+    if move_lateral == 1:
+        return "move_left"
+    if move_lateral == 2:
+        return "move_right"
+    if move_vertical == 1:
+        return "jump"
+    if move_vertical == 2:
+        return "sneak"
+
+    return IDLE_ACTION
+
+
+def normalize_action_label(action):
+    """Acepta formato discreto nuevo o vector legacy."""
+    if isinstance(action, str):
+        return action if action else IDLE_ACTION
+
+    if isinstance(action, list) and len(action) == 11:
+        return vector_to_action_label(action)
+
+    if isinstance(action, dict):
+        # Permite formatos tipo {"name":"attack"}
+        name = action.get("name") or action.get("action") or action.get("type")
+        if isinstance(name, str) and name:
+            return name
+        # o dict multidiscrete legado
+        return vector_to_action_label([
+            int(action.get("move_forward", 0) or 0),
+            int(action.get("move_backward", 0) or 0),
+            int(action.get("move_lateral", 0) or 0),
+            int(action.get("move_vertical", 0) or 0),
+            int(action.get("camera_yaw", 0) or 0),
+            int(action.get("camera_pitch", 0) or 0),
+            int(action.get("attack", 0) or 0),
+            int(action.get("craft", 0) or 0),
+            int(action.get("smelt", 0) or 0),
+            int(action.get("place", 0) or 0),
+            int(action.get("equip", 0) or 0),
+        ])
+
+    return IDLE_ACTION
 
 
 class MinecraftDataset(Dataset):
@@ -75,17 +158,15 @@ class MinecraftDataset(Dataset):
                         continue
 
                     action = item.get("action")
-                    # lista de 11 ints
-                    if action is None or len(action) != 11:
+                    if action is None:
                         continue
 
-                    # vector (11,) -> par ("idle",0) o (slot, valor)
-                    pair = vector_to_pair(action)
+                    action_label = normalize_action_label(action)
 
                     # asignar id si no existe
-                    if pair not in self.pair2id:
-                        self.pair2id[pair] = len(self.pair2id)
-                    label_id = self.pair2id[pair]
+                    if action_label not in self.pair2id:
+                        self.pair2id[action_label] = len(self.pair2id)
+                    label_id = self.pair2id[action_label]
 
                     self.data.append({
                         "image_path": img_path,
@@ -96,7 +177,7 @@ class MinecraftDataset(Dataset):
 
         print(f"Dataset: {len(self.data)} valid samples")
 
-        # distribución por par (slot, valor) o idle
+        # distribución por etiqueta discreta
         if self.data:
             labels = [d["label"] for d in self.data]
             print("Label distribution:", Counter(labels))
@@ -115,43 +196,40 @@ class MinecraftDataset(Dataset):
     def get_transforms(self):
         return self.transforms   
 
+
+
+    # Reemplaza tu método load_dataset actual por este:
     def load_dataset(self, split_ratio=0.8):
-        # No aplicamos una separacion de test, ya que la hacemos manualmente o con el bot
         train_size = int(split_ratio * len(self.data))
-        val_size = len(self.data) - train_size
-        # Las transformaciones se aplican en __getitem__
-        train_ds, val_ds = random_split(self, [train_size, val_size])
+        
+        # Mezclar índices manualmente
+        # indices = torch.randperm(len(self)).tolist()
+        # train_indices = indices[:train_size]
+        # val_indices = indices[train_size:]
+
+        # split secuencial cronológico, el dataset esta ordanado por tiempo
+        train_indices = list(range(train_size))
+        val_indices = list(range(train_size, len(self.data)))
+        
+        # Crear Dataset de Entrenamiento
+        train_ds = copy.deepcopy(self)
+        train_ds.data = [self.data[i] for i in train_indices]
+        train_ds.transforms = T.Compose([
+            T.Resize((224, 224)),
+            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3), # Variación visual
+            T.ToTensor(),
+            T.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+        ])
+        
+        # Crear Dataset de Validación (SIN ColorJitter)
+        val_ds = copy.deepcopy(self)
+        val_ds.data = [self.data[i] for i in val_indices]
+        val_ds.transforms = T.Compose([
+            T.Resize((224, 224)),
+            T.ToTensor(),
+            T.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+        ])
 
         train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
         val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
         return train_loader, val_loader
-    
-
-if __name__ == "__main__":
-    dataset = MinecraftDataset(jsonl_path='data\\train.jsonl')
-    train_loader, val_loader = dataset.load_dataset()
-    print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
-    print("Sample batch:")
-
-    for images, labels in train_loader:
-        print("Images shape:", images.shape)  # [B,3,224,224]
-        print("Labels shape:", labels.shape)  # [B]
-        print("Labels:", labels)
-        print(f"Image: {images[0]}, Label: {labels[0]}")
-        print("Label id to (slot, value) mapping:")
-        print()
-        id2pair = {v: k for k, v in dataset.pair2id.items()}
-
-        print("ID -> (action_name, value) -- At least 1 time:")
-        for id_, (slot, value) in sorted(id2pair.items()):
-            # como no tenemos el nombre de la accion para idle, lo ponemos a mano
-            # en el test si encontramos idle podemos simplemente pasar a la siguiente iteracion hacer nada
-            if slot == "idle":
-                action_name = "idle"
-            else:
-                action_name = ACTIONS[slot]
-            # La salida son 15 acciones que tienen un valor distinto de 0
-            # Como en esta iteracion nunca craftea, funde, etc. esas acciones se "filtran"
-            # en el dataset, ya que no se realizan nunca
-            print(f"{id_}: ({action_name}, {value})")
-        break

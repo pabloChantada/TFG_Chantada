@@ -14,27 +14,70 @@ def _to_float(value, default=0.0):
         return default
 
 
-# Action dimension names (matches rl_action_tracker.js MultiDiscrete space)
-ACTION_DIMS = [
-    "move_forward",   # Discrete(3): 0=still, 1=walk, 2=sprint
-    "move_backward",  # Discrete(2): 0=still, 1=walk
-    "move_lateral",   # Discrete(3): 0=still, 1=left, 2=right
-    "move_vertical",  # Discrete(3): 0=still, 1=jump, 2=sneak
-    "camera_yaw",     # Discrete(5): 0=none, 1=+15°, 2=-15°, 3=+45°, 4=-45°
-    "camera_pitch",   # Discrete(5): 0=none, 1=+15°, 2=-15°, 3=+45°, 4=-45°
-    "attack",         # Discrete(2): 0=no, 1=yes
-    "craft",          # Discrete(7): 0=none..6=iron_pickaxe
-    "smelt",          # Discrete(2): 0=none, 1=iron_ingot
-    "place",          # Discrete(4): 0=none..3=torch
-    "equip",          # Discrete(5): 0=none..4=axe
-]
+def _normalize_discrete_action(action_value):
+    """Normalize action from metrics to a single discrete label string."""
+    if isinstance(action_value, str):
+        return action_value or "idle"
+
+    # Compatibility with old multidiscrete dict format
+    if isinstance(action_value, dict):
+        attack = int(action_value.get("attack", 0) or 0)
+        equip = int(action_value.get("equip", 0) or 0)
+        camera_yaw = int(action_value.get("camera_yaw", 0) or 0)
+        camera_pitch = int(action_value.get("camera_pitch", 0) or 0)
+        move_forward = int(action_value.get("move_forward", 0) or 0)
+        move_backward = int(action_value.get("move_backward", 0) or 0)
+        move_lateral = int(action_value.get("move_lateral", 0) or 0)
+        move_vertical = int(action_value.get("move_vertical", 0) or 0)
+
+        if attack == 1:
+            return "attack"
+        if equip == 4:
+            return "equip_wooden_axe"
+
+        if camera_yaw == 1:
+            return "camera_yaw_p15"
+        if camera_yaw == 2:
+            return "camera_yaw_m15"
+        if camera_yaw == 3:
+            return "camera_yaw_p45"
+        if camera_yaw == 4:
+            return "camera_yaw_m45"
+
+        if camera_pitch == 1:
+            return "camera_pitch_p15"
+        if camera_pitch == 2:
+            return "camera_pitch_m15"
+        if camera_pitch == 3:
+            return "camera_pitch_p45"
+        if camera_pitch == 4:
+            return "camera_pitch_m45"
+
+        if move_forward == 2:
+            return "move_forward_sprint"
+        if move_forward == 1:
+            return "move_forward_walk"
+        if move_backward == 1:
+            return "move_backward_walk"
+        if move_lateral == 1:
+            return "move_left"
+        if move_lateral == 2:
+            return "move_right"
+        if move_vertical == 1:
+            return "jump"
+        if move_vertical == 2:
+            return "sneak"
+
+        return "idle"
+
+    return "idle"
 
 
 def build_dataset(metrics_dir, output_jsonl, root_dir="."):
     """Build training dataset from metrics JSON files.
 
-    Reads from control_tracking.rl_actions.action_sequence which contains
-    the MultiDiscrete action vector + screenshot for each timestep.
+    Reads from control_tracking.rl_actions.action_sequence and stores
+    one discrete action label per timestep.
     """
     metrics_files = sorted(glob.glob(os.path.join(metrics_dir, "*_metrics.json")))
 
@@ -69,12 +112,9 @@ def build_dataset(metrics_dir, output_jsonl, root_dir="."):
                 if not screenshot:
                     continue
 
-                action_dict = step.get("action", {})
+                action_label = _normalize_discrete_action(step.get("action", "idle"))
                 position = step.get("position", {}) or {}
                 camera = step.get("camera", {}) or {}
-
-                # Build action vector (MultiDiscrete)
-                action_vector = [int(action_dict.get(dim, 0)) for dim in ACTION_DIMS]
 
                 # Build state — prefer full 13-dim vector when available
                 state_vector = step.get("state_vector")
@@ -98,7 +138,7 @@ def build_dataset(metrics_dir, output_jsonl, root_dir="."):
                 example = {
                     "image": screenshot_path,
                     "state": state,
-                    "action": action_vector,
+                    "action": action_label,
                 }
 
                 out_f.write(json.dumps(example, ensure_ascii=False) + "\n")

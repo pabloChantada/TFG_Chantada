@@ -9,6 +9,7 @@
  * Usage:
  *   node src/evaluation/mass_record.js                              # 10 episodes, default settings
  *   node src/evaluation/mass_record.js --episodes 50                # 50 episodes
+ *   node src/evaluation/mass_record.js --episodes 50 --metrics-dir agent_metrics_discrete --output data/train_discrete.jsonl  # 50 episodes
  *   node src/evaluation/mass_record.js --episodes 20 --balance      # 20 episodes + auto-balance
  *   node src/evaluation/mass_record.js --minecraft-port 25565       # custom MC port
  * 

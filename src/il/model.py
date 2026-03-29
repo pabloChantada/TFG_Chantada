@@ -5,7 +5,6 @@ from torchvision.models import resnet18, resnet34, resnet50, resnet101
 # (idle, move_forward=2, camera_yaw=2, attack=1, etc.)
 # Actualmente tenemos 15, y sobreescribimos el valor en main.py
 # pero lo dejamos aqui como default
-NUM_ACTIONS = 15
 
 BACKBONES = {
     'resnet18':  (resnet18,  'IMAGENET1K_V1'),
@@ -15,7 +14,7 @@ BACKBONES = {
 }
 
 class MinecraftILModel(nn.Module):
-    def __init__(self, num_actions: int = NUM_ACTIONS, backbone: str = 'resnet18'):
+    def __init__(self, num_actions, backbone: str = 'resnet18'):
         super().__init__()
         if backbone not in BACKBONES:
             raise ValueError(f"Backbone '{backbone}' no soportado. Opciones: {list(BACKBONES.keys())}")
@@ -25,7 +24,10 @@ class MinecraftILModel(nn.Module):
         in_features = base.fc.in_features
 
         # Reemplazar fc final con la capa de acciones del dataset
-        base.fc = nn.Linear(in_features, num_actions)
+        base.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(in_features, num_actions)
+        )
 
         self.model = base
         self.backbone_name = backbone

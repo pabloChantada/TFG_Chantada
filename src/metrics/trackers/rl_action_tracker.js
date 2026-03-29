@@ -1,19 +1,7 @@
 /**
  * RL Action Space Tracker
- * Tracks and records actions in the discrete action space format required for RL training
- * 
- * Action Space:
- * - move_forward:  Discrete(3) - 0=still, 1=walk, 2=sprint
- * - move_backward: Discrete(2) - 0=still, 1=walk
- * - move_lateral:  Discrete(3) - 0=still, 1=left, 2=right
- * - move_vertical: Discrete(3) - 0=still, 1=jump, 2=sneak
- * - camera_yaw:    Discrete(5) - 0=nothing, 1=+15°, 2=-15°, 3=+45°, 4=-45°
- * - camera_pitch:  Discrete(5) - 0=nothing, 1=+15°, 2=-15°, 3=+45°, 4=-45°
- * - attack:        Discrete(2) - 0=no, 1=attack
- * - craft:         Discrete(7) - none/planks/stick/crafting_table/wpick/spick/ipick
- * - smelt:         Discrete(2) - none/iron_ingot
- * - place:         Discrete(4) - none/crafting_table/furnace/torch
- * - equip:         Discrete(5) - none/wpick/spick/ipick/axe
+ * Tracks and records DIRECT discrete actions (single label per timestep)
+ * for the tree-cutting imitation learning task.
  */
 
 import { getBotPosition } from '../utils.js'
@@ -27,7 +15,7 @@ export class RLActionTracker {
         this.actionSequence = []
         this.maxSequenceLength = 5000
         
-        // Current action state (what will be encoded as the current action vector)
+        // Current low-level control state used to derive one discrete action label
         this.currentAction = this.getEmptyAction()
         
         // Previous camera orientation for delta calculation
@@ -41,6 +29,40 @@ export class RLActionTracker {
         // Counters
         this.capturedCount = 0
         this.skippedCount = 0
+
+        // Priority to collapse simultaneous controls into ONE discrete action
+        // Highest priority first (tree-cutting policy)
+        this.discretePriority = [
+            'attack',
+            'equip_wooden_axe',
+            'camera_yaw',
+            'camera_pitch',
+            'move_forward',
+            'move_backward',
+            'move_lateral',
+            'move_vertical'
+        ]
+
+        this.actionToId = {
+            idle: 0,
+            move_forward_walk: 1,
+            move_forward_sprint: 2,
+            move_backward_walk: 3,
+            move_left: 4,
+            move_right: 5,
+            jump: 6,
+            sneak: 7,
+            camera_yaw_p15: 8,
+            camera_yaw_m15: 9,
+            camera_yaw_p45: 10,
+            camera_yaw_m45: 11,
+            camera_pitch_p15: 12,
+            camera_pitch_m15: 13,
+            camera_pitch_p45: 14,
+            camera_pitch_m45: 15,
+            attack: 16,
+            equip_wooden_axe: 17
+        }
     }
 
     /**
@@ -55,10 +77,7 @@ export class RLActionTracker {
             camera_yaw: 0,      // 0=nothing, 1=+15°, 2=-15°, 3=+45°, 4=-45°
             camera_pitch: 0,    // 0=nothing, 1=+15°, 2=-15°, 3=+45°, 4=-45°
             attack: 0,          // 0=no, 1=attack
-            craft: 0,           // 0=none, 1=planks, 2=stick, 3=crafting_table, 4=wpick, 5=spick, 6=ipick
-            smelt: 0,           // 0=none, 1=iron_ingot
-            place: 0,           // 0=none, 1=crafting_table, 2=furnace, 3=torch
-            equip: 0            // 0=none, 1=wpick, 2=spick, 3=ipick, 4=axe
+            equip_wooden_axe: 0 // 0=no, 1=equip wooden axe
         }
     }
 
@@ -172,62 +191,11 @@ export class RLActionTracker {
     }
 
     /**
-     * Update craft action
-     * @param {string} itemName - none/planks/stick/crafting_table/wooden_pickaxe/stone_pickaxe/iron_pickaxe
-     */
-    updateCraftAction(itemName) {
-        const craftMapping = {
-            'none': 0,
-            'planks': 1,
-            'oak_planks': 1,
-            'stick': 2,
-            'crafting_table': 3,
-            'wooden_pickaxe': 4,
-            'stone_pickaxe': 5,
-            'iron_pickaxe': 6
-        }
-        this.currentAction.craft = craftMapping[itemName] || 0
-    }
-
-    /**
-     * Update smelt action
-     * @param {string} itemName - none/iron_ingot
-     */
-    updateSmeltAction(itemName) {
-        const smeltMapping = {
-            'none': 0,
-            'iron_ingot': 1
-        }
-        this.currentAction.smelt = smeltMapping[itemName] || 0
-    }
-
-    /**
-     * Update place action
-     * @param {string} blockName - none/crafting_table/furnace/torch
-     */
-    updatePlaceAction(blockName) {
-        const placeMapping = {
-            'none': 0,
-            'crafting_table': 1,
-            'furnace': 2,
-            'torch': 3
-        }
-        this.currentAction.place = placeMapping[blockName] || 0
-    }
-
-    /**
      * Update equip action
-     * @param {string} itemName - none/wooden_pickaxe/stone_pickaxe/iron_pickaxe/wooden_axe
+     * @param {string} itemName - expects wooden_axe for the tree-cutting task
      */
     updateEquipAction(itemName) {
-        const equipMapping = {
-            'none': 0,
-            'wooden_pickaxe': 1,
-            'stone_pickaxe': 2,
-            'iron_pickaxe': 3,
-            'wooden_axe': 4
-        }
-        this.currentAction.equip = equipMapping[itemName] || 0
+        this.currentAction.equip_wooden_axe = itemName === 'wooden_axe' ? 1 : 0
     }
 
     /**
@@ -238,11 +206,12 @@ export class RLActionTracker {
      */
     async recordAction() {
         const now = Date.now()
+        const discreteAction = this._toDiscreteAction(this.currentAction)
         
         // Avoid recording identical actions too frequently
         // Use direct value comparison instead of JSON.stringify to reduce GC pressure
         if (this.lastRecordedAction && 
-            this._actionsEqual(this.currentAction, this.lastRecordedAction.action) &&
+            this._actionsEqual(discreteAction, this.lastRecordedAction.action) &&
             (now - this.lastRecordedAction._ts) < this.recordThrottle) {
             return null
         }
@@ -277,7 +246,8 @@ export class RLActionTracker {
                 pitch: orientation.pitch
             } : null,
             state_vector: stateVector,
-            action: { ...this.currentAction },
+            action: discreteAction.name,
+            action_id: discreteAction.id,
             screenshot: screenshotPath,
         }
 
@@ -305,17 +275,64 @@ export class RLActionTracker {
      */
     _actionsEqual(a, b) {
         if (!a || !b) return false
-        return a.move_forward === b.move_forward &&
-               a.move_backward === b.move_backward &&
-               a.move_lateral === b.move_lateral &&
-               a.move_vertical === b.move_vertical &&
-               a.camera_yaw === b.camera_yaw &&
-               a.camera_pitch === b.camera_pitch &&
-               a.attack === b.attack &&
-               a.craft === b.craft &&
-               a.smelt === b.smelt &&
-               a.place === b.place &&
-               a.equip === b.equip
+        return a.id === b.id
+    }
+
+    /**
+     * Collapse low-level state to one discrete action label.
+     */
+    _toDiscreteAction(action) {
+        if (!action) {
+            return { id: this.actionToId.idle, name: 'idle' }
+        }
+
+        for (const key of this.discretePriority) {
+            if (key === 'attack' && action.attack === 1) {
+                return { id: this.actionToId.attack, name: 'attack' }
+            }
+
+            if (key === 'equip_wooden_axe' && action.equip_wooden_axe === 1) {
+                return { id: this.actionToId.equip_wooden_axe, name: 'equip_wooden_axe' }
+            }
+
+            if (key === 'camera_yaw' && action.camera_yaw > 0) {
+                if (action.camera_yaw === 1) return { id: this.actionToId.camera_yaw_p15, name: 'camera_yaw_p15' }
+                if (action.camera_yaw === 2) return { id: this.actionToId.camera_yaw_m15, name: 'camera_yaw_m15' }
+                if (action.camera_yaw === 3) return { id: this.actionToId.camera_yaw_p45, name: 'camera_yaw_p45' }
+                if (action.camera_yaw === 4) return { id: this.actionToId.camera_yaw_m45, name: 'camera_yaw_m45' }
+            }
+
+            if (key === 'camera_pitch' && action.camera_pitch > 0) {
+                if (action.camera_pitch === 1) return { id: this.actionToId.camera_pitch_p15, name: 'camera_pitch_p15' }
+                if (action.camera_pitch === 2) return { id: this.actionToId.camera_pitch_m15, name: 'camera_pitch_m15' }
+                if (action.camera_pitch === 3) return { id: this.actionToId.camera_pitch_p45, name: 'camera_pitch_p45' }
+                if (action.camera_pitch === 4) return { id: this.actionToId.camera_pitch_m45, name: 'camera_pitch_m45' }
+            }
+
+            if (key === 'move_forward' && action.move_forward > 0) {
+                return action.move_forward === 2
+                    ? { id: this.actionToId.move_forward_sprint, name: 'move_forward_sprint' }
+                    : { id: this.actionToId.move_forward_walk, name: 'move_forward_walk' }
+            }
+
+            if (key === 'move_backward' && action.move_backward > 0) {
+                return { id: this.actionToId.move_backward_walk, name: 'move_backward_walk' }
+            }
+
+            if (key === 'move_lateral' && action.move_lateral > 0) {
+                return action.move_lateral === 1
+                    ? { id: this.actionToId.move_left, name: 'move_left' }
+                    : { id: this.actionToId.move_right, name: 'move_right' }
+            }
+
+            if (key === 'move_vertical' && action.move_vertical > 0) {
+                return action.move_vertical === 1
+                    ? { id: this.actionToId.jump, name: 'jump' }
+                    : { id: this.actionToId.sneak, name: 'sneak' }
+            }
+        }
+
+        return { id: this.actionToId.idle, name: 'idle' }
     }
 
     /**
@@ -339,7 +356,7 @@ export class RLActionTracker {
      * Get current action state
      */
     getCurrentAction() {
-        return { ...this.currentAction }
+        return this._toDiscreteAction(this.currentAction)
     }
 
     /**
@@ -348,24 +365,14 @@ export class RLActionTracker {
     getActionStats(sequence = this.actionSequence) {
         const stats = {
             total_actions: sequence.length,
-            action_distribution: {},
-            total_by_type: {}
+            action_distribution: {}
         }
 
-        // Initialize counters for each action type
-        const actionTypes = Object.keys(this.getEmptyAction())
-        for (const type of actionTypes) {
-            stats.total_by_type[type] = {}
-        }
-
-        // Count action distributions
+        // Count label distribution
         for (const record of sequence) {
-            for (const [actionType, value] of Object.entries(record.action)) {
-                if (!stats.total_by_type[actionType][value]) {
-                    stats.total_by_type[actionType][value] = 0
-                }
-                stats.total_by_type[actionType][value]++
-            }
+            const key = String(record.action || 'idle')
+            if (!stats.action_distribution[key]) stats.action_distribution[key] = 0
+            stats.action_distribution[key]++
         }
 
         return stats

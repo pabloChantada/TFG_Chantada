@@ -150,7 +150,13 @@ def plot_gradcam(model, image_path, dataset, save_dir=".", img_size=(448, 448)):
     # Mappings
     id2pair = {v: k for k, v in dataset.pair2id.items()}
     pred_action = id2pair[pred_class]
-    name = "idle" if pred_action[0] == "idle" else ACTIONS.get(pred_action[0], f"slot_{pred_action[0]}")
+    if isinstance(pred_action, tuple):
+        # Legacy format: (slot, value)
+        name = "idle" if pred_action[0] == "idle" else ACTIONS.get(pred_action[0], f"slot_{pred_action[0]}")
+        pred_label = f"{name}={pred_action[1]}"
+    else:
+        # New format: discrete string label
+        pred_label = str(pred_action)
     
     # Imagen para visualización ALTA RES
     img_array = np.array(high_res_img)  # 448x448 ahora
@@ -170,7 +176,7 @@ def plot_gradcam(model, image_path, dataset, save_dir=".", img_size=(448, 448)):
     axes[0].axis('off')
     
     im1 = axes[1].imshow(heatmap_highres, cmap='jet')
-    axes[1].set_title(f'Grad-CAM HD: {name}={pred_action[1]}', fontsize=14)
+    axes[1].set_title(f'Grad-CAM HD: {pred_label}', fontsize=14)
     axes[1].axis('off')
     plt.colorbar(im1, ax=axes[1], fraction=0.046, pad=0.04)
     
@@ -186,4 +192,4 @@ def plot_gradcam(model, image_path, dataset, save_dir=".", img_size=(448, 448)):
     
     cam_extractor.release()
     print(f"Grad-CAM HD guardado: {output_path}")
-    print(f"Predicción: {name}={pred_action[1]}")
+    print(f"Predicción: {pred_label}")
