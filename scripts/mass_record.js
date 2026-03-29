@@ -11,6 +11,8 @@
  *
  * Paso siguiente (limpieza manual del dataset):
  *   python scripts/prepare_dataset.py --input data/train.jsonl --output data/train_clean.jsonl
+ * 
+ * SEED: 7145048257670320778
  */
 
 import { spawn, execSync } from 'child_process'
