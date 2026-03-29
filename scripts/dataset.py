@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import glob
-from collections import defaultdict
 
 
 def _to_float(value, default=0.0):
@@ -73,12 +72,13 @@ def _normalize_discrete_action(action_value):
     return "idle"
 
 
-def build_dataset(metrics_dir, output_jsonl, root_dir="."):
+def build_dataset(metrics_dir, output_jsonl):
     """Build training dataset from metrics JSON files.
 
     Reads from control_tracking.rl_actions.action_sequence and stores
     one discrete action label per timestep.
     """
+    root_dir = "."
     metrics_files = sorted(glob.glob(os.path.join(metrics_dir, "*_metrics.json")))
 
     output_dir = os.path.dirname(output_jsonl)
@@ -151,9 +151,10 @@ def build_dataset(metrics_dir, output_jsonl, root_dir="."):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--metrics_dir", default="src/metrics/agent_metrics")
-    parser.add_argument("--output_jsonl", default="data/train.jsonl")
-    parser.add_argument("--root_dir", default=".")
+    parser.add_argument("--metrics_dir",  default="src/metrics/agent_metrics",
+                        help="Directorio con los *_metrics.json")
+    parser.add_argument("--output_jsonl", default="data/train.jsonl",
+                        help="Ruta del JSONL de salida")
     args = parser.parse_args()
 
-    build_dataset(args.metrics_dir, args.output_jsonl, args.root_dir)
+    build_dataset(args.metrics_dir, args.output_jsonl)
