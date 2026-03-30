@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-test_model.py — Prueba el modelo de Imitation Learning en dos modos:
+test_model.py — Prueba el modelo de Imitation Learning en tres modos:
 
   --mode manual  : captura pantalla y muestra la predicción (sin ejecutar)
-  --mode bot     : loop continuo que predice y ejecuta las acciones en el juego
+  --mode bot     : loop continuo que predice y ejecuta las acciones via teclado/ratón (pyautogui)
+  --mode server  : loop continuo que predice y ejecuta las acciones via HTTP al servidor RL
+                   (requiere: node src/rl/server.js corriendo)
 
 Uso:
   python scripts/test_model.py --model src/il/models/minecraft_model.pth --mode manual
   python scripts/test_model.py --model src/il/models/minecraft_model.pth --mode bot --region 0 0 854 480
+  python scripts/test_model.py --model src/il/models/minecraft_model.pth --mode server --server http://localhost:3001
 
 Dependencias bot:
   pip install pyautogui
+Dependencias server:
+  pip install requests
 """
 
 import sys

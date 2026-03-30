@@ -1,21 +1,22 @@
 /**
  * Grabación masiva de episodios HTN para el dataset de IL.
  *
- * Lanza N episodios del agente HTN secuencialmente, recoge las métricas
- * y genera el JSONL de entrenamiento con dataset.py.
+ * Lanza N episodios del agente HTN secuencialmente. Cada episodio guarda
+ * un JSONL en data/recordings/. Al terminar, concatena todos los JSONL
+ * en el fichero de salida listo para prepare_dataset.py.
  *
  * Uso:
  *   node scripts/mass_record.js --episodes 20
  *   node scripts/mass_record.js --episodes 50 --minecraft-port 25565
  *   node scripts/mass_record.js --episodes 20 --clean
  *
- * Paso siguiente (limpieza manual del dataset):
+ * Paso siguiente:
  *   python scripts/prepare_dataset.py --input data/train.jsonl --output data/train_clean.jsonl
- * 
+ *
  * SEED: 7145048257670320778
  */
 
-import { spawn, execSync } from 'child_process'
+import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import yargs from 'yargs'
@@ -37,9 +38,9 @@ const args = yargs(hideBin(process.argv))
         description: 'Puerto base para prismarine-viewer',
         default: 3000
     })
-    .option('metrics-dir', {
+    .option('recordings-dir', {
         type: 'string',
-        description: 'Directorio de salida de métricas',
+        description: 'Directorio donde dataset_recorder guarda los JSONL y screenshots',
         default: 'data/recordings'
     })
     .option('output', {
@@ -72,12 +73,12 @@ function generateAgentName(episode) {
 }
 
 /**
- * Encuentra el número de episodio más alto ya grabado en metricsDir.
+ * Encuentra el número de episodio más alto ya grabado en recordingsDir.
  * Busca ficheros con el patrón Rec_N_* y devuelve el mayor N encontrado (0 si ninguno).
  */
-function getLastEpisodeNumber(metricsDir) {
-    if (!fs.existsSync(metricsDir)) return 0
-    const files = fs.readdirSync(metricsDir)
+function getLastEpisodeNumber(recordingsDir) {
+    if (!fs.existsSync(recordingsDir)) return 0
+    const files = fs.readdirSync(recordingsDir)
     let max = 0
     for (const file of files) {
         const match = file.match(/^Rec_(\d+)_/)
@@ -89,17 +90,14 @@ function getLastEpisodeNumber(metricsDir) {
     return max
 }
 
-function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
+function runEpisode(episode, agentName, mcPort, viewerPort) {
     return new Promise((resolve) => {
-        // const metricsPath = path.join(metricsDir, `${agentName}_metrics.json`)
-
         const agentArgs = [
             'src/agents/add_agent.js',
             '--name', agentName,
             '--type', 'htn',
             '--minecraft-port', String(mcPort),
             '--viewer-port', String(viewerPort),
-            // '--metrics-path', metricsPath,
         ]
 
         console.log(`\n${'─'.repeat(60)}`)
@@ -122,17 +120,14 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
                 console.warn(`Episodio ${episode} salió con código ${code} tras ${duration}s`)
             }
 
-            // const metricsExists = fs.existsSync(metricsPath)
-            // if (!metricsExists) console.warn(`  Sin fichero de métricas en ${metricsPath}`)
-
-            resolve({ success, duration_s: parseFloat(duration), metricsExists: false /*metricsExists*/ })
+            resolve({ success, duration_s: parseFloat(duration) })
         })
 
         child.on('error', (err) => {
             if (settled) return
             settled = true
             console.error(`Episodio ${episode} error de spawn: ${err.message}`)
-            resolve({ success: false, duration_s: 0, metricsExists: false })
+            resolve({ success: false, duration_s: 0 })
         })
 
         // Timeout de seguridad: 5 minutos por episodio
@@ -146,39 +141,65 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
     })
 }
 
+/**
+ * Concatena todos los ficheros .jsonl de recordingsDir en outputPath.
+ * Devuelve el total de líneas escritas.
+ */
+function mergeJsonlFiles(recordingsDir, outputPath) {
+    const jsonlFiles = fs.readdirSync(recordingsDir)
+        .filter(f => f.endsWith('.jsonl'))
+        .map(f => path.join(recordingsDir, f))
+        .sort()
+
+    if (jsonlFiles.length === 0) return 0
+
+    const out = fs.createWriteStream(outputPath, { flags: 'w' })
+    let totalLines = 0
+    for (const file of jsonlFiles) {
+        const content = fs.readFileSync(file, 'utf-8')
+        const lines = content.split('\n').filter(l => l.trim())
+        for (const line of lines) {
+            out.write(line + '\n')
+            totalLines++
+        }
+    }
+    out.end()
+    return totalLines
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
     const { episodes } = args
-    const mcPort      = args['minecraft-port']
-    const basePort    = args['base-port']
-    const metricsDir  = args['metrics-dir']
-    const outputJsonl = args.output
-    const pauseSec    = args.pause
+    const mcPort         = args['minecraft-port']
+    const basePort       = args['base-port']
+    const recordingsDir  = args['recordings-dir']
+    const outputJsonl    = args.output
+    const pauseSec       = args.pause
 
     console.log('╔══════════════════════════════════════════════════╗')
     console.log('║            MASS RECORDING — IL DATASET          ║')
     console.log('╠══════════════════════════════════════════════════╣')
-    console.log(`║  Episodios:  ${String(episodes).padEnd(37)}║`)
-    console.log(`║  Puerto MC:  ${String(mcPort).padEnd(37)}║`)
-    console.log(`║  Métricas:   ${metricsDir.padEnd(37)}║`)
-    console.log(`║  Salida:     ${outputJsonl.padEnd(37)}║`)
+    console.log(`║  Episodios:    ${String(episodes).padEnd(35)}║`)
+    console.log(`║  Puerto MC:    ${String(mcPort).padEnd(35)}║`)
+    console.log(`║  Recordings:   ${recordingsDir.padEnd(35)}║`)
+    console.log(`║  Salida:       ${outputJsonl.padEnd(35)}║`)
     console.log('╚══════════════════════════════════════════════════╝\n')
 
     if (args.clean) {
-        console.log('[MASS] Limpiando directorio de métricas...')
-        if (fs.existsSync(metricsDir)) fs.rmSync(metricsDir, { recursive: true, force: true })
+        console.log('[MASS] Limpiando directorio de grabaciones...')
+        if (fs.existsSync(recordingsDir)) fs.rmSync(recordingsDir, { recursive: true, force: true })
     }
-    fs.mkdirSync(metricsDir, { recursive: true })
+    fs.mkdirSync(recordingsDir, { recursive: true })
 
-    const startEp = getLastEpisodeNumber(metricsDir) + 1
+    const startEp = getLastEpisodeNumber(recordingsDir) + 1
     if (startEp > 1) console.log(`[MASS] Continuando desde episodio ${startEp} (${startEp - 1} ya grabados)\n`)
 
     // ── Grabar episodios ──────────────────────────────────────────────
     const results = []
     for (let ep = startEp; ep < startEp + episodes; ep++) {
         const agentName = generateAgentName(ep)
-        const result = await runEpisode(ep, agentName, mcPort, basePort, metricsDir)
+        const result = await runEpisode(ep, agentName, mcPort, basePort)
         results.push(result)
 
         if (ep < startEp + episodes - 1) {
@@ -189,38 +210,32 @@ async function main() {
 
     // ── Resumen ───────────────────────────────────────────────────────
     const succeeded   = results.filter(r => r.success).length
-    const withMetrics = results.filter(r => r.metricsExists).length
     const avgDuration = results.reduce((s, r) => s + r.duration_s, 0) / results.length
 
     console.log('\n' + '═'.repeat(60))
     console.log('RESUMEN')
     console.log('═'.repeat(60))
     console.log(`  Episodios OK:   ${succeeded}/${episodes}`)
-    console.log(`  Con métricas:   ${withMetrics}/${episodes}`)
     console.log(`  Duración media: ${avgDuration.toFixed(1)}s`)
 
-    if (withMetrics === 0) {
-        console.error('\nSin ficheros de métricas. No se puede generar dataset.')
+    if (succeeded === 0) {
+        console.error('\nNingún episodio completado correctamente.')
         process.exit(1)
     }
 
-    // ── Generar dataset ───────────────────────────────────────────────
+    // ── Concatenar JSONL de todas las grabaciones ─────────────────────
     console.log('\n' + '─'.repeat(60))
-    console.log('GENERANDO DATASET...')
+    console.log('COMBINANDO GRABACIONES...')
     console.log('─'.repeat(60))
 
-    try {
-        execSync(
-            `python scripts/dataset.py --metrics_dir "${metricsDir}" --output_jsonl "${outputJsonl}"`,
-            { stdio: 'inherit', cwd: process.cwd() }
-        )
-    } catch (err) {
-        console.error(`Error al generar el dataset: ${err.message}`)
+    const totalLines = mergeJsonlFiles(recordingsDir, outputJsonl)
+    if (totalLines === 0) {
+        console.error(`No se encontraron JSONL en ${recordingsDir}.`)
         process.exit(1)
     }
 
-    console.log('\nDataset generado:', outputJsonl)
-    console.log('  Para limpiar antes de entrenar:')
+    console.log(`\nDataset combinado: ${outputJsonl}  (${totalLines} frames)`)
+    console.log('\nPara limpiar y preparar el dataset antes de entrenar:')
     console.log(`  python scripts/prepare_dataset.py --input ${outputJsonl} --output data/train_clean.jsonl`)
 }
 

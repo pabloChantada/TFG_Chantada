@@ -83,7 +83,6 @@ for (let i = 0; i < agentTypes.length; i++) {
         '--type', agentType,
         '--minecraft-port', String(args['minecraft-port']),
         '--viewer-port', String(viewerPort),
-        '--metrics-path', metricsPath,
     ]
 
     console.log(`[INFO] Agente ${i + 1}/${agentTypes.length}: ${agentName} (${agentType}) → puerto ${viewerPort}`)

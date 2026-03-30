@@ -44,11 +44,6 @@ import { logInfo, logError } from './logging.js';
                 description: `Port for browser viewer`,
                 default: 3000
             })
-            //.option(`metrics-path`, {
-            //    type: `string`,
-            //    description: `Path to export metrics`,
-            //    default: `./metrics`
-            //})
             .option(`inference-url`, {
                 type: `string`,
                 description: `URL del servidor de inferencia IL (sólo para --type il)`,
@@ -73,7 +68,6 @@ import { logInfo, logError } from './logging.js';
         const settings = buildAgentSettings(agentName, agentType, {
             minecraftHost: args[`minecraft-host`],
             minecraftPort: args[`minecraft-port`],
-            // metricsPath: args[`metrics-path`],
             minecraftVersion: args[`minecraft-version`],
             inferenceUrl: args[`inference-url`]
         });
@@ -129,7 +123,6 @@ function buildAgentSettings(agentName, agentType, options = {}) {
         port: options.minecraftPort || 25565,
         auth: `offline`,
         version: options.minecraftVersion || `auto`,
-        metrics_export_path: options.metricsPath || `./metrics`,
         inference_url: options.inferenceUrl || `http://127.0.0.1:8765`,
         task: {
             goal: `Complete ${agentType.toUpperCase()} progression`
