@@ -1,133 +1,32 @@
 import os
 import sys
 import json
+import random
 from collections import Counter
 from pathlib import Path
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader, random_split
-import torchvision.transforms as T
-import numpy as np
-import copy
 import torch
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as T
+import copy
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-ACTIONS = [
-    "idle",
-    "move_forward_walk",
-    "move_forward_sprint",
-    "move_backward_walk",
-    "move_left",
-    "move_right",
-    "jump",
-    "sneak",
-    "camera_yaw_p15",
-    "camera_yaw_m15",
-    "camera_yaw_p45",
-    "camera_yaw_m45",
-    "camera_pitch_p15",
-    "camera_pitch_m15",
-    "camera_pitch_p45",
-    "camera_pitch_m45",
-    "attack",
-    "equip_wooden_axe",
+from constants import IDLE_ACTION, BATCH_SIZE, IMAGENET_MEAN, IMAGENET_STD
+
+# Label pairs that are mirror images of each other (horizontal flip swaps them)
+MIRROR_PAIRS = [
+    ("camera_yaw_p45", "camera_yaw_m45"),
+    ("camera_yaw_p15", "camera_yaw_m15"),
 ]
-
-BATCH_SIZE = 32
-
-# Definimos una etiqueta especial para idle
-IDLE_ACTION = "idle"
-
-
-def vector_to_action_label(action):
-    """
-    action: lista o array de 11 ints (legacy multidiscrete)
-    Devuelve una etiqueta discreta única.
-    """
-    try:
-        move_forward = int(action[0])
-        move_backward = int(action[1])
-        move_lateral = int(action[2])
-        move_vertical = int(action[3])
-        camera_yaw = int(action[4])
-        camera_pitch = int(action[5])
-        attack = int(action[6])
-        equip = int(action[10])
-    except Exception:
-        return IDLE_ACTION
-
-    # Prioridad igual que en el tracker
-    if attack == 1:
-        return "attack"
-    if equip == 4:
-        return "equip_wooden_axe"
-
-    if camera_yaw == 1:
-        return "camera_yaw_p15"
-    if camera_yaw == 2:
-        return "camera_yaw_m15"
-    if camera_yaw == 3:
-        return "camera_yaw_p45"
-    if camera_yaw == 4:
-        return "camera_yaw_m45"
-
-    if camera_pitch == 1:
-        return "camera_pitch_p15"
-    if camera_pitch == 2:
-        return "camera_pitch_m15"
-    if camera_pitch == 3:
-        return "camera_pitch_p45"
-    if camera_pitch == 4:
-        return "camera_pitch_m45"
-
-    if move_forward == 2:
-        return "move_forward_sprint"
-    if move_forward == 1:
-        return "move_forward_walk"
-    if move_backward == 1:
-        return "move_backward_walk"
-    if move_lateral == 1:
-        return "move_left"
-    if move_lateral == 2:
-        return "move_right"
-    if move_vertical == 1:
-        return "jump"
-    if move_vertical == 2:
-        return "sneak"
-
-    return IDLE_ACTION
 
 
 def normalize_action_label(action):
-    """Acepta formato discreto nuevo o vector legacy."""
+    """Normaliza una acción al string label discreto correspondiente."""
     if isinstance(action, str):
         return action if action else IDLE_ACTION
-
-    if isinstance(action, list) and len(action) == 11:
-        return vector_to_action_label(action)
-
-    if isinstance(action, dict):
-        # Permite formatos tipo {"name":"attack"}
-        name = action.get("name") or action.get("action") or action.get("type")
-        if isinstance(name, str) and name:
-            return name
-        # o dict multidiscrete legado
-        return vector_to_action_label([
-            int(action.get("move_forward", 0) or 0),
-            int(action.get("move_backward", 0) or 0),
-            int(action.get("move_lateral", 0) or 0),
-            int(action.get("move_vertical", 0) or 0),
-            int(action.get("camera_yaw", 0) or 0),
-            int(action.get("camera_pitch", 0) or 0),
-            int(action.get("attack", 0) or 0),
-            int(action.get("craft", 0) or 0),
-            int(action.get("smelt", 0) or 0),
-            int(action.get("place", 0) or 0),
-            int(action.get("equip", 0) or 0),
-        ])
-
     return IDLE_ACTION
 
 
@@ -135,25 +34,23 @@ class MinecraftDataset(Dataset):
     def __init__(self, jsonl_path, pair2id=None):
         self.data = []
         self.transforms = T.Compose([
-            T.Resize((224, 224)),   # Resize para usar en ResNet
+            T.Resize((224, 224)),
             T.ToTensor(),
-            # Normalizacion para ResNet preentrenado con Imagenet (https://discuss.pytorch.org/t/what-is-the-correct-pytorch-resnet50-input-normalization-intensity-range/147540)
-            # Es un poco magic numbers pero son las valores que se recomiendan
-            T.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+            T.Normalize(IMAGENET_MEAN, IMAGENET_STD)
         ])
 
-        # pair2id: dict externo opcional (para tener el mismo vocab en train/val/test)
-        # si no se pasa, lo construiremos sobre la marcha
         self.pair2id = {} if pair2id is None else dict(pair2id)
+        self.use_mirror_flip = False
+        self.mirror_label_map: dict[int, int] = {}
+        self.num_aux = 0  # set after loading
 
         print(f"Loading dataset from {jsonl_path}.")
+        error_count = 0
         with open(jsonl_path, 'r') as f:
             for i, line in enumerate(f):
                 try:
                     item = json.loads(line.strip())
                     img_path = item.get("image")
-                    # Saltamos la linea si no tiene imagen o la ruta no existe
-                    # En principio nunca deberia pasar, pero por si acaso
                     if not img_path or not os.path.exists(img_path):
                         continue
 
@@ -163,24 +60,45 @@ class MinecraftDataset(Dataset):
 
                     action_label = normalize_action_label(action)
 
-                    # asignar id si no existe
                     if action_label not in self.pair2id:
                         self.pair2id[action_label] = len(self.pair2id)
                     label_id = self.pair2id[action_label]
 
+                    # Tree-visibility aux features
+                    tree_visible = item.get("tree_visible")
+                    tree_distance = item.get("tree_distance")
+                    has_tree_aux = tree_visible is not None or tree_distance is not None
+
                     self.data.append({
                         "image_path": img_path,
                         "label": label_id,
+                        "tree_visible": bool(tree_visible) if tree_visible is not None else None,
+                        "tree_distance": float(tree_distance) if tree_distance is not None else None,
+                        "has_tree_aux": has_tree_aux,
                     })
-                except Exception:
+                except Exception as e:
+                    error_count += 1
+                    print(f"  [WARN] Línea {i}: {type(e).__name__}: {e}")
                     continue
 
+        if error_count > 0:
+            print(f"  [{error_count} líneas con error omitidas]")
         print(f"Dataset: {len(self.data)} valid samples")
 
-        # distribución por etiqueta discreta
         if self.data:
             labels = [d["label"] for d in self.data]
             print("Label distribution:", Counter(labels))
+
+        # Determine num_aux from whether tree aux fields are present
+        aux_samples = [d for d in self.data if d["has_tree_aux"]]
+        self.num_aux = 2 if aux_samples else 0
+        if self.num_aux:
+            pct_visible = 100.0 * sum(1 for d in self.data if d["tree_visible"]) / len(self.data)
+            dist_vals = [d["tree_distance"] / 32.0 for d in self.data if d["tree_distance"] is not None]
+            mean_dist = sum(dist_vals) / len(dist_vals) if dist_vals else 0.0
+            print(f"Aux feat : 2  (tree_visible, tree_distance_norm)")
+            print(f"  tree_visible=True : {pct_visible:.1f}%")
+            print(f"  tree_distance mean: {mean_dist:.2f} (norm)")
 
     def __len__(self):
         return len(self.data)
@@ -188,48 +106,88 @@ class MinecraftDataset(Dataset):
     def __getitem__(self, idx):
         item = self.data[idx]
         image = Image.open(item["image_path"]).convert("RGB")
+        label = item["label"]
+
         if self.transforms:
             image = self.transforms(image)
-        label = item["label"]  
-        return image, label
+
+        # Build aux tensor: [tree_visible (0/1), tree_distance_norm (clipped 0-1)]
+        if item["has_tree_aux"]:
+            tv = 1.0 if item["tree_visible"] else 0.0
+            td = min(max(item["tree_distance"] / 32.0, 0.0), 1.0) if item["tree_distance"] is not None else 0.0
+            aux = torch.tensor([tv, td], dtype=torch.float32)
+        else:
+            aux = torch.zeros(2, dtype=torch.float32)
+
+        # Label-aware mirror flip (train only, enabled via use_mirror_flip)
+        # Flips the image horizontally and swaps camera_yaw_p <-> camera_yaw_m labels.
+        if self.use_mirror_flip and random.random() < 0.5:
+            image = torch.flip(image, dims=[2])
+            label = self.mirror_label_map.get(label, label)
+
+        return image, aux, label
 
     def get_transforms(self):
-        return self.transforms   
+        return self.transforms
 
+    def load_dataset(self, split_ratio=0.8, seed=42):
+        # --- Session-based split ---
+        # Group sample indices by recording session (parent directory of the image).
+        # Sessions are shuffled with a fixed seed and split 80/20 so that no session
+        # bleeds across train/val, avoiding temporal leakage and world-state bias.
+        session_to_indices: dict[str, list[int]] = {}
+        for i, item in enumerate(self.data):
+            parts = item["image_path"].replace("\\", "/").split("/")
+            key = parts[-2] if len(parts) >= 2 else None
+            if key is None:
+                print(f"  [WARN] Cannot parse session from '{item['image_path']}', assigning to train")
+                key = "__unresolved__"
+            session_to_indices.setdefault(key, []).append(i)
 
+        sessions = sorted(session_to_indices.keys())
+        rng = random.Random(seed)
+        rng.shuffle(sessions)
 
-    # Reemplaza tu método load_dataset actual por este:
-    def load_dataset(self, split_ratio=0.8):
-        train_size = int(split_ratio * len(self.data))
-        
-        # Mezclar índices manualmente
-        # indices = torch.randperm(len(self)).tolist()
-        # train_indices = indices[:train_size]
-        # val_indices = indices[train_size:]
+        n_train = max(1, int(len(sessions) * split_ratio))
+        train_sessions = set(sessions[:n_train])
+        val_sessions   = set(sessions[n_train:])
 
-        # split secuencial cronológico, el dataset esta ordanado por tiempo
-        train_indices = list(range(train_size))
-        val_indices = list(range(train_size, len(self.data)))
-        
-        # Crear Dataset de Entrenamiento
+        print(f"\n  Session split (seed={seed}): {len(train_sessions)} train / {len(val_sessions)} val")
+        print(f"  Train sessions: {sorted(train_sessions)}")
+        print(f"  Val   sessions: {sorted(val_sessions)}")
+
+        train_indices = [i for s in train_sessions for i in session_to_indices[s]]
+        val_indices   = [i for s in val_sessions   for i in session_to_indices[s]]
+
         train_ds = copy.deepcopy(self)
         train_ds.data = [self.data[i] for i in train_indices]
         train_ds.transforms = T.Compose([
             T.Resize((224, 224)),
-            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3), # Variación visual
+            # T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+            # T.RandomGrayscale(p=0.1),
+            # NOTE: No RandomHorizontalFlip — plain flipping corrupts camera_yaw labels.
+            # Label-aware mirror flip is handled in __getitem__ via use_mirror_flip.
             T.ToTensor(),
-            T.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+            T.Normalize(IMAGENET_MEAN, IMAGENET_STD)
         ])
-        
-        # Crear Dataset de Validación (SIN ColorJitter)
+        train_ds.use_mirror_flip = True
+        mirror_label_map: dict[int, int] = {}
+        for action_a, action_b in MIRROR_PAIRS:
+            id_a = self.pair2id.get(action_a)
+            id_b = self.pair2id.get(action_b)
+            if id_a is not None and id_b is not None:
+                mirror_label_map[id_a] = id_b
+                mirror_label_map[id_b] = id_a
+        train_ds.mirror_label_map = mirror_label_map
+
         val_ds = copy.deepcopy(self)
         val_ds.data = [self.data[i] for i in val_indices]
         val_ds.transforms = T.Compose([
             T.Resize((224, 224)),
             T.ToTensor(),
-            T.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+            T.Normalize(IMAGENET_MEAN, IMAGENET_STD)
         ])
 
-        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=2)
         val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
         return train_loader, val_loader
