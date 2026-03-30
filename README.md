@@ -130,3 +130,15 @@ python src/rl/train.py
 This is my Bachelor's Thesis (TFG) at UDC. The goal is both a technical implementation and a comparative study — not just making agents work, but understanding *why* each paradigm succeeds or fails in this environment.
 
 The task (wood → stone → iron progression) was chosen because it requires multi-step planning, spatial navigation, inventory management, and adapting to a procedurally generated world — making it a meaningful benchmark across all three approaches.
+
+
+<!-- Copy-paste in your Readme.md file -->
+
+<a href="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution?period=all_times&user_id=147641118" target="_blank" style="display: block" align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution/thumbnail.png?period=all_times&user_id=147641118&image_size=auto&color_scheme=dark" width="721" height="auto">
+    <img alt="Contribution Time Distribution of @pabloChantada" src="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution/thumbnail.png?period=all_times&user_id=147641118&image_size=auto&color_scheme=light" width="721" height="auto">
+  </picture>
+</a>
+
+<!-- Made with [OSS Insight](https://ossinsight.io/) -->
