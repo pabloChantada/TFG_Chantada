@@ -3,6 +3,7 @@ const { Movements } = pkg
 import minecraftData from 'minecraft-data'
 import { runFullProgression } from './progression/run_progression_iron.js'
 import { runChopProgression } from './progression/run_progression_chop.js'
+import { setupRecorder } from '../il/dataset_recorder.js'
 
 let mcData
 const LOG_COUNT = 5
@@ -41,6 +42,8 @@ export async function startHTN(bot) {
 export async function startChopTrees(bot, logCount = LOG_COUNT) {
     mcData = minecraftData(bot.version)
     setupPathfinder(bot, mcData)
+    const viewerPort = parseInt(process.env.VIEWER_PORT || '3000', 10)
+    await setupRecorder(bot, mcData, viewerPort)
     return await startChopProgression(bot, mcData, logCount)
 }
 

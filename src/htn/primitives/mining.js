@@ -101,11 +101,13 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
         // Increase search radius with each attempt to find more ores if they are not found nearby
         const currentRadius = searchRadius + (attempts * 16)
         // Only find blocks with exposed faces (visible to the bot, not buried underground)
+        bot._datasetRecorder?.setIntent('search_tree')
         let ore = findNearestVisibleBlock(bot, mcData, blockName, currentRadius)
-        
+
         if (ore) {
             if (isUnderwaterTarget(bot, ore)) {
                 console.warn(`[mineBlock] Underwater detected (oxygen: ${bot.oxygenLevel}/20). Skipping ${blockName} and exploring elsewhere...`)
+                bot._datasetRecorder?.setIntent('explore')
                 await exploreRandom(bot, 24)
                 attempts++
                 continue
@@ -127,6 +129,7 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
             // Cycle strategies across attempts instead of failing after 3 misses.
             // This gives maxAttempts real value and improves recovery in difficult terrain.
             const strategy = notFoundCount % 4
+            bot._datasetRecorder?.setIntent('explore')
             if (strategy === 0) {
                 //zSurface exploration, likely to find cave openings
                 await exploreRandom(bot, 50)
@@ -165,6 +168,7 @@ async function mine(bot, block) {
     if (!block) throw new Error(`[ERROR] ${botLabel} No block provided for mining.`)
     
     try {
+        bot._datasetRecorder?.setIntent('approach_tree')
         const escapedWater = await recoverFromWater(bot)
         if (!escapedWater) {
             throw new Error(`Drowning risk detected before mining`)
@@ -200,8 +204,10 @@ async function mine(bot, block) {
         if (!currentBlock || currentBlock.type === 0) {
             throw new Error(`Block disappeared before mining`)
         }
-        
+
+        bot._datasetRecorder?.setIntent('chop_tree')
         await bot.collectBlock.collect(currentBlock)
+        bot._datasetRecorder?.setIntent('collect_wood')
     } catch (e) {
         console.error(`[ERROR] [${botLabel}] Failed to mine: ${e.message}`)
         throw e

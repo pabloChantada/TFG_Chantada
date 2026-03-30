@@ -60,6 +60,7 @@ const plankToLog = Object.fromEntries(
  * @returns {Promise<string>} - The wood type to use (e.g., "oak_log").
  */
 async function obtainWoodType(bot, mcData) {
+    bot._datasetRecorder?.setIntent('search_tree')
     // Obtain biome name and map to wood type
     const biome = getBiomeName(bot, mcData);
     let woodType = biomeToWoodType[biome];
@@ -144,6 +145,7 @@ function getWoodTypeFromInventory(bot) {
 async function chop(bot, mcData, logs = 4, metricsCollector = null) {
     const woodType = await obtainWoodType(bot, mcData);
     console.log(`[Wood.js] Detected biome. Searching for: ${woodType}`);
+    bot._datasetRecorder?.setWoodType(woodType)
     const finalCount = await mineBlock(bot, mcData, woodType, logs);
     return finalCount;
 }

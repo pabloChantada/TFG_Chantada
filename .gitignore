@@ -112,3 +112,6 @@ models/
 runs/
 icons/
 plots/
+data/recordings/
+train_balanced.jsonl
+train_cleaned.jsonl
