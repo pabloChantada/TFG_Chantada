@@ -40,7 +40,7 @@ const args = yargs(hideBin(process.argv))
     .option('metrics-dir', {
         type: 'string',
         description: 'Directorio de salida de métricas',
-        default: 'src/metrics/agent_metrics'
+        default: 'data/recordings'
     })
     .option('output', {
         type: 'string',
@@ -91,7 +91,7 @@ function getLastEpisodeNumber(metricsDir) {
 
 function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
     return new Promise((resolve) => {
-        const metricsPath = path.join(metricsDir, `${agentName}_metrics.json`)
+        // const metricsPath = path.join(metricsDir, `${agentName}_metrics.json`)
 
         const agentArgs = [
             'src/agents/add_agent.js',
@@ -99,7 +99,7 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
             '--type', 'htn',
             '--minecraft-port', String(mcPort),
             '--viewer-port', String(viewerPort),
-            '--metrics-path', metricsPath,
+            // '--metrics-path', metricsPath,
         ]
 
         console.log(`\n${'─'.repeat(60)}`)
@@ -122,10 +122,10 @@ function runEpisode(episode, agentName, mcPort, viewerPort, metricsDir) {
                 console.warn(`Episodio ${episode} salió con código ${code} tras ${duration}s`)
             }
 
-            const metricsExists = fs.existsSync(metricsPath)
-            if (!metricsExists) console.warn(`  Sin fichero de métricas en ${metricsPath}`)
+            // const metricsExists = fs.existsSync(metricsPath)
+            // if (!metricsExists) console.warn(`  Sin fichero de métricas en ${metricsPath}`)
 
-            resolve({ success, duration_s: parseFloat(duration), metricsExists })
+            resolve({ success, duration_s: parseFloat(duration), metricsExists: false /*metricsExists*/ })
         })
 
         child.on('error', (err) => {

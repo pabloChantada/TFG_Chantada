@@ -143,24 +143,23 @@ function isInVisionCone(
 
 /**
  * Finds the nearest block that the bot can actually SEE (non-omniscient).
- * 
- * Three-stage filter:
+ *
+ * Two or three-stage filter depending on `useFovCone`:
  *   1. isBlockExposed — block has at least one face adjacent to air (cheap check)
- *   2. isInVisionCone — block must be inside camera FOV cone (player-like perception)
+ *   2. isInVisionCone — (skipped when useFovCone=false) block inside camera FOV cone
  *   3. hasLineOfSight — unobstructed raycast from bot's eyes to the block (same as RL)
- * 
- * This means the bot CANNOT find blocks in:
- *   - Unvisited caves (wall between bot and block)
- *   - Behind hills or structures
- *   - Buried underground with no exposure
- * 
+ *
+ * useFovCone=true  → strict RL-style: bot can only see what is in its current camera frame.
+ * useFovCone=false → HTN-style: bot can rotate its head; still blocked by walls/hills.
+ *
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
  * @param {string} blockName - The name of the block to find (e.g., "iron_ore").
  * @param {number} maxDistance - Maximum search distance (default 32).
+ * @param {boolean} useFovCone - Whether to apply the camera FOV cone filter (default true).
  * @returns {Block|null} - The nearest truly visible block, or null if none found.
  */
-function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32) {
+function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32, useFovCone = true) {
     const blockId = getBlockId(mcData, blockName)
     if (!blockId) return null
 
@@ -173,8 +172,8 @@ function findNearestVisibleBlock(bot, mcData, blockName, maxDistance = 32) {
     for (const pos of positions) {
         // Stage 1: cheap check — does the block have an exposed face?
         if (!isBlockExposed(bot, pos)) continue
-        // Stage 2: block must be inside current camera vision cone
-        if (!isInVisionCone(bot, pos)) continue
+        // Stage 2: block must be inside current camera vision cone (RL mode only)
+        if (useFovCone && !isInVisionCone(bot, pos)) continue
         // Stage 3: expensive check — can the bot actually see it from here?
         if (!hasLineOfSight(bot, pos)) continue
 

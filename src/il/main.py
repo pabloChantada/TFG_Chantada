@@ -41,7 +41,7 @@ class TeeLogger:
 def parse_args():
     parser = argparse.ArgumentParser(description="Minecraft IL: Train o Inference")
     parser.add_argument('--mode',     choices=['train', 'eval', 'inference'], default='train')
-    parser.add_argument('--dataset',  type=str,   default='data/train_clean.jsonl',
+    parser.add_argument('--dataset',  type=str,   default='data/train.jsonl',
                         help='Ruta al dataset JSONL')
     parser.add_argument('--model',    type=str,   default='src/il/models/minecraft_model.pth',
                         help='Ruta al modelo')
@@ -117,7 +117,7 @@ def write_run_summary(args, run_timestamp, model, dataset, train_loader, val_loa
     print(f"  Total    : {len(dataset.data)} muestras")
     print(f"  Train    : {len(train_loader.dataset)} muestras ({len(train_sessions)} sesiones)")
     print(f"  Val      : {len(val_loader.dataset)} muestras ({len(val_sessions)} sesiones)")
-    print(f"  Aux feat : {dataset.num_aux}  (yaw_delta/pi, speed, dy)" if dataset.num_aux else "  Aux feat : ninguna")
+    print(f"  Aux feat : {dataset.num_aux}  (tree_visible, tree_distance_norm)" if dataset.num_aux else "  Aux feat : ninguna")
     print()
     print(f"  Distribución de clases:")
     for label_id in sorted(id2pair):

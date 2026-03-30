@@ -32,7 +32,7 @@ IL_DIR = PROJECT_ROOT / "src" / "il"
 sys.path.insert(0, str(IL_DIR))
 
 from model import MinecraftILModel
-from constants import ACTIONS, IMAGENET_MEAN, IMAGENET_STD
+from constants import IMAGENET_MEAN, IMAGENET_STD
 
 # ── Transform (idéntico al val/inference del dataset, sin augmentación) ───────
 TRANSFORM = T.Compose([
@@ -59,11 +59,20 @@ def load_model_and_mapping(model_path: str, device: torch.device):
     """
     state = torch.load(model_path, map_location=device, weights_only=True)
 
-    # head.1.weight → con Dropout (versión actual)
-    # head.0.weight → sin Dropout (versiones anteriores)
+    # Detectar formato del checkpoint:
+    #   head.1.weight → arquitectura actual (Dropout + Linear en self.head)
+    #   head.0.weight → arquitectura actual sin Dropout
+    #   model.fc.weight → formato antiguo (fc era el clasificador directamente)
     head_w = state.get("head.1.weight")
-    if head_w is None:
-        head_w = state.get("head.0.weight")
+    legacy = head_w is None and "model.fc.weight" in state
+
+    if legacy:
+        # Checkpoint antiguo: convertir model.fc → head.1 para poder cargarlo
+        head_w = state["model.fc.weight"]
+        print("[WARN] Checkpoint antiguo (model.fc). Convirtiendo para compatibilidad.")
+        state["head.1.weight"] = state.pop("model.fc.weight")
+        state["head.1.bias"]   = state.pop("model.fc.bias")
+
     if head_w is None:
         available = [k for k in state if "weight" in k]
         raise ValueError(
@@ -80,7 +89,6 @@ def load_model_and_mapping(model_path: str, device: torch.device):
     for bb, feat_dim in backbone_map.items():
         candidate_aux = linear_in - feat_dim
         if candidate_aux >= 0:
-            # Verificar que cargar con este backbone no da error de forma
             try:
                 m = MinecraftILModel(num_actions=num_actions, backbone=bb, num_aux=candidate_aux)
                 m.load_state_dict(state)
@@ -105,10 +113,12 @@ def load_model_and_mapping(model_path: str, device: torch.device):
             pair2id = json.load(f)
         print(f"Mapping cargado desde {pair2id_path}")
     else:
-        # Fallback: usar ACTIONS en orden
-        pair2id = {a: i for i, a in enumerate(ACTIONS[:num_actions])}
-        print(f"[WARN] {pair2id_path.name} no encontrado. Usando orden de ACTIONS (puede ser incorrecto).")
-        print(f"       Genera el mapping con: python scripts/save_pair2id.py --dataset data/train_clean.jsonl --model {model_path}")
+        raise FileNotFoundError(
+            f"No se encontró el mapping de clases '{pair2id_path.name}'.\n"
+            f"Los modelos entrenados con main.py o sweep.py generan este archivo automáticamente.\n"
+            f"Si tienes un checkpoint antiguo, genera el mapping con:\n"
+            f"  python scripts/save_pair2id.py --dataset data/train_clean.jsonl --model {model_path}"
+        )
 
     id2action = {v: k for k, v in pair2id.items()}
     return model, id2action

@@ -44,11 +44,11 @@ import { logInfo, logError } from './logging.js';
                 description: `Port for browser viewer`,
                 default: 3000
             })
-            .option(`metrics-path`, {
-                type: `string`,
-                description: `Path to export metrics`,
-                default: `./metrics`
-            })
+            //.option(`metrics-path`, {
+            //    type: `string`,
+            //    description: `Path to export metrics`,
+            //    default: `./metrics`
+            //})
             .option(`inference-url`, {
                 type: `string`,
                 description: `URL del servidor de inferencia IL (sólo para --type il)`,
@@ -73,7 +73,7 @@ import { logInfo, logError } from './logging.js';
         const settings = buildAgentSettings(agentName, agentType, {
             minecraftHost: args[`minecraft-host`],
             minecraftPort: args[`minecraft-port`],
-            metricsPath: args[`metrics-path`],
+            // metricsPath: args[`metrics-path`],
             minecraftVersion: args[`minecraft-version`],
             inferenceUrl: args[`inference-url`]
         });

@@ -14,26 +14,30 @@ function sleep(ms) {
 }
 
 /**
- * Checks if the bot is underwater by monitoring oxygen level.
- * If oxygen level is below maximum (20), the bot is submerged.
+ * Checks if the bot is underwater by testing the block at eye level.
+ * oxygenLevel starts at 0 on spawn and syncs after a few ticks, so it
+ * produces false positives on land — block-based check is reliable.
  * @param {Bot} bot - The mineflayer bot instance
- * @returns {boolean} - True if the bot is underwater
+ * @returns {boolean} - True if the bot's eyes are submerged in water
  */
 function isBotSubmerged(bot) {
-    return bot.oxygenLevel < 20
+    const eyeBlock = bot.blockAt(bot.entity.position.offset(0, 1.62, 0))
+    return eyeBlock != null && (eyeBlock.name === 'water' || eyeBlock.name === 'flowing_water')
 }
 
 /**
- * Checks if a target block is underwater by attempting to approach it
- * and monitoring if oxygen level starts decreasing.
+ * Checks if a target block is actually submerged — water at or above the block position.
+ * Does NOT check if the bot itself is in water, only the target.
  * @param {Bot} bot - The mineflayer bot instance
  * @param {Block} block - The target block to check
- * @returns {boolean} - True if approaching the block causes oxygen loss
+ * @returns {boolean} - True if the block itself is in/under water
  */
 function isUnderwaterTarget(bot, block) {
     if (!block) return false
-    // If bot is already underwater, the target is likely underwater too
-    return isBotSubmerged(bot)
+    const isWater = (b) => b && (b.name === 'water' || b.name === 'flowing_water')
+    const blockAtPos = bot.blockAt(block.position)
+    const blockAbove = bot.blockAt(block.position.offset(0, 1, 0))
+    return isWater(blockAtPos) || isWater(blockAbove)
 }
 
 /**
@@ -79,7 +83,10 @@ async function recoverFromWater(bot, timeout = 6000) {
  * @return {Promise<void>}
  */
 
-async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAttempts = 5) {
+async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAttempts = 5, opts = {}) {
+    // useFovCone=false: bot can rotate head to find any visible tree (360° line-of-sight, no wall hacking)
+    // useFovCone=true: strict RL-style, only finds trees currently in camera frame
+    const { useFovCone = false } = opts
     // Check if the block we want to mine is different from the item we want to obtain (e.g., mining "coal_ore" gives "coal")
     // If not, return the blockName as the itemName
     const itemName = getItemNameFromBlock(blockName)
@@ -91,18 +98,14 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
     while (!hasItem(bot, mcData, itemName, count) && attempts < maxAttempts) {
         // Timeout
         if (Date.now() - startTime > MAX_TIME_MS) {
-            throw {
-                type: 'TIMEOUT',
-                message: `Timeout after ${attempts} attempts`,
-                reason: 'time_exceeded'
-            }
+            throw new Error(`Timeout after ${attempts} attempts`)
         }
 
         // Increase search radius with each attempt to find more ores if they are not found nearby
         const currentRadius = searchRadius + (attempts * 16)
         // Only find blocks with exposed faces (visible to the bot, not buried underground)
         bot._datasetRecorder?.setIntent('search_tree')
-        let ore = findNearestVisibleBlock(bot, mcData, blockName, currentRadius)
+        let ore = findNearestVisibleBlock(bot, mcData, blockName, currentRadius, useFovCone)
 
         if (ore) {
             if (isUnderwaterTarget(bot, ore)) {
@@ -118,7 +121,7 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
             } catch (e) {
                 // Differentiate error types
                 if (e.message.includes('No block provided')) {
-                    throw { type: 'INVALID_BLOCK', reason: 'block_missing' }
+                    throw new Error('Invalid block: block missing')
                 }
                 attempts++
             }
@@ -151,12 +154,8 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
     
     // We dont have the required items after max attempts
     if (!hasItem(bot, mcData, itemName, count)) {
-        throw {
-            type: 'INSUFFICIENT_ITEMS',
-            obtained: bot.inventory.count(mcData.itemsByName[itemName]?.id || 0),
-            required: count,
-            reason: 'max_attempts_reached'
-        }
+        const obtained = bot.inventory.count(mcData.itemsByName[itemName]?.id || 0)
+        throw new Error(`Max attempts reached: got ${obtained}/${count} ${itemName}`)
     }
     
     // Return final count obtained
@@ -176,12 +175,16 @@ async function mine(bot, block) {
 
         await moveToBlock(bot, block, 4)
 
-        // If too close, collectBlock's internal pathfinder (GoalLookAtBlock) gets confused
-        // and loops doing movement instead of mining — back up to a safe distance first
-        const closeDist = bot.entity.position.distanceTo(block.position)
-        if (closeDist < MIN_MINING_DIST) {
-            console.warn(`[mine] ${botLabel} Too close (${closeDist.toFixed(2)} blocks), backing up...`)
-            const blockCenter = block.position.offset(0.5, 0, 0.5)
+        // If too close HORIZONTALLY, collectBlock's internal pathfinder (GoalLookAtBlock) gets
+        // confused and loops doing movement instead of mining — back up to a safe distance.
+        // Use horizontal-only distance: blocks directly above don't need a horizontal backup.
+        const blockCenter = block.position.offset(0.5, 0, 0.5)
+        const hDist = Math.sqrt(
+            (bot.entity.position.x - blockCenter.x) ** 2 +
+            (bot.entity.position.z - blockCenter.z) ** 2
+        )
+        if (hDist < MIN_MINING_DIST) {
+            console.warn(`[mine] ${botLabel} Too close horizontally (${hDist.toFixed(2)} blocks), backing up...`)
             const dir = bot.entity.position.minus(blockCenter)
             const dirLen = dir.norm()
             const safeDir = dirLen > 0.01 ? dir.scaled(1 / dirLen) : { x: 1, y: 0, z: 0 }
@@ -206,15 +209,57 @@ async function mine(bot, block) {
         }
 
         bot._datasetRecorder?.setIntent('chop_tree')
+        const minedPos = currentBlock.position.clone()
+        const minedName = currentBlock.name
         await bot.collectBlock.collect(currentBlock)
         bot._datasetRecorder?.setIntent('collect_wood')
+        // Mine the rest of the trunk straight up (non-omniscient: adjacent known positions)
+        await mineTreeTrunk(bot, minedName, minedPos)
     } catch (e) {
         console.error(`[ERROR] [${botLabel}] Failed to mine: ${e.message}`)
         throw e
     }
 }
 
+/**
+ * After mining the base of a tree, collects each log straight up the trunk
+ * at (x, y+1, z), (x, y+2, z) ... until the block type changes.
+ * Uses collectBlock.collect directly — no moveToBlock, no backup logic —
+ * because the bot is already standing next to these blocks.
+ * @param {Bot} bot - The mineflayer bot instance
+ * @param {string} woodType - Log block name (e.g. 'oak_log')
+ * @param {Object} basePos - Vec3 position of the log that was just mined
+ */
+async function mineTreeTrunk(bot, woodType, basePos) {
+    // Check there is at least one log above before moving
+    const firstAbove = bot.blockAt(basePos.offset(0, 1, 0))
+    if (!firstAbove || firstAbove.name !== woodType) return
+
+    // Step under the trunk column so the upward chopping looks natural
+    bot._datasetRecorder?.setIntent('approach_tree')
+    try {
+        await bot.pathfinder.goto(new goals.GoalNear(basePos.x, basePos.y, basePos.z, 0))
+    } catch (_e) { /* continue even if positioning is imperfect */ }
+
+    let pos = basePos.offset(0, 1, 0)
+    while (true) {
+        const block = bot.blockAt(pos)
+        if (!block || block.name !== woodType) break
+        try {
+            bot._datasetRecorder?.setIntent('chop_tree')
+            await bot.lookAt(block.position.offset(0.5, 0.5, 0.5))
+            await bot.dig(block)
+            bot._datasetRecorder?.setIntent('collect_wood')
+            await bot.waitForTicks(2)
+        } catch (_e) {
+            break
+        }
+        pos = pos.offset(0, 1, 0)
+    }
+}
+
 export {
     mineBlock,
+    mineTreeTrunk,
     mine
 }

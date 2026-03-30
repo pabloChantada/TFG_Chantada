@@ -29,11 +29,12 @@ agents_*.json
 src/agents/memories/*
 !src/agents/memories/*example*
 
-src/metrics/agent_metrics/*
+agent_metrics/
 src/evaluation/README_VAE.md
 # Ignorar modelos
 vae_minecraft.pth
 .github
+legacy/
 
 ################################
 ###### Proyecto LLM Agent ######

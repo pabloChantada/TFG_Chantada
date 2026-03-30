@@ -7,7 +7,6 @@ import { getBotLabel } from './utils.js'
  * Main orchestrator for full progression
  * @param {Bot} bot - Bot instance
  * @param {Object} mcData - Minecraft data
- * @param {Object} metricsCollector - (Optional) Metrics collector
  * @returns {Promise<void>}
  */
 async function runFullProgression(bot, mcData) {

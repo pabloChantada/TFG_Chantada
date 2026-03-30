@@ -1,16 +1,18 @@
 /**
- * DatasetRecorder — Intent-aware dataset collection for the HTN chopping pipeline.
+ * DatasetRecorder - Intent-aware dataset collection for the HTN chopping pipeline.
  *
  * Each captured frame is tagged with the HTN sub-task that caused it, eliminating
  * the label noise produced by continuous capture (e.g. "turning to search" vs
  * "turning to align for chopping").
  *
- * Intent labels:
- *   search_tree   — bot is scanning/rotating because no tree is visible yet
- *   approach_tree — bot is walking toward a visible tree (moveToBlock active)
- *   chop_tree     — bot is actively breaking a log (collectBlock.collect active)
- *   collect_wood  — bot is collecting broken log items after the block dropped
- *   explore       — bot is doing exploreRandom() because no tree was found
+ * Intent labels (recorded):
+ *   search_tree   - bot is scanning/rotating because no tree is visible yet
+ *   approach_tree - bot is walking toward a visible tree (moveToBlock active)
+ *   chop_tree     - bot is actively breaking a log (collectBlock.collect active)
+ *   explore       - bot is doing exploreRandom() because no tree was found
+ *
+ * Excluded intents (bot executes them but no frames are captured):
+ *   collect_wood  - items collected passively after block drop; not learnable from vision
  *
  * Capture rates:
  *   Normal (search/approach/collect): 1 frame / 800 ms
@@ -37,7 +39,7 @@ import path from 'path'
 import puppeteer from 'puppeteer'
 import { findNearestVisibleBlock } from '../htn/primitives/blocks.js'
 
-// ── Timing ────────────────────────────────────────────────────────────────────
+// - Timing ----------------------------------
 const TICK_MS             = 200   // Timer resolution (how often we check)
 const NORMAL_INTERVAL_MS  = 800   // Default capture interval
 const CHOP_INTERVAL_MS    = 1200  // chop_tree: animation is repetitive
@@ -45,23 +47,23 @@ const EXPLORE_INTERVAL_MS = 2000  // explore: least informative phase
 const PHASE_SETTLE_MS     = 300   // Skip frames this long after intent change
 const PHASE_PAUSE_MS      = 500   // Additional wait before first capture post-transition
 
-// ── Screenshot / viewer ───────────────────────────────────────────────────────
+// - Screenshot / viewer ----------------------------
 const VIEWER_WIDTH      = 854
 const VIEWER_HEIGHT     = 480
 const BROWSER_WARMUP_MS = 2000
 
-// ── Chop validation ───────────────────────────────────────────────────────────
+// - Chop validation ------------------------------
 // A frame is only labeled chop_tree if the log is visible within this distance
 const CHOP_MAX_DIST = 4
 
-// ── Output directory ──────────────────────────────────────────────────────────
+// - Output directory -----------------------------
 const RECORDINGS_DIR = 'data/recordings'
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------
 
 /**
  * Scan RECORDINGS_DIR for existing session files and return the next sequential N.
- * Falls back to 1 if the directory doesn't exist or is empty.
+ * Falls back to 1 if the directory doesnt exist or is empty.
  */
 function nextSessionNumber() {
     let maxN = 0
@@ -88,12 +90,12 @@ function getCaptureInterval(intent) {
     return NORMAL_INTERVAL_MS
 }
 
-// ── DatasetRecorder ───────────────────────────────────────────────────────────
+// - DatasetRecorder ------------------------------
 
 class DatasetRecorder {
     /**
      * @param {import('mineflayer').Bot} bot
-     * @param {Object} mcData  — result of minecraftData(bot.version)
+     * @param {Object} mcData  - result of minecraftData(bot.version)
      */
     constructor(bot, mcData) {
         this.bot  = bot
@@ -128,14 +130,17 @@ class DatasetRecorder {
         this._woodType = null
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    // - Public API ------------------------------
 
     /**
      * Set the current HTN sub-task intent.
-     * Must be called explicitly by HTN code — never inferred from heuristics.
+     * Must be called explicitly by HTN code - never inferred from heuristics.
      * @param {'search_tree'|'approach_tree'|'chop_tree'|'collect_wood'|'explore'} intent
      */
     setIntent(intent) {
+        // collect_wood is excluded from the dataset: the bot executes it normally
+        // but no frames are recorded (items are collected passively, not learnable).
+        if (intent === 'collect_wood') return
         if (intent === this.currentIntent) return
         console.log(`[DatasetRecorder] ${this.currentIntent} → ${intent}`)
         this.currentIntent     = intent
@@ -151,7 +156,7 @@ class DatasetRecorder {
         this._woodType = woodType
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // - Lifecycle -------------------------------
 
     async start(viewerPort = 3000) {
         this._screenshotsDir = path.join(RECORDINGS_DIR, `${this._sessionId}_screenshots`)
@@ -180,7 +185,7 @@ class DatasetRecorder {
         this._intentChangeTime = Date.now()
         this._scheduleTick()
 
-        console.log(`[DatasetRecorder] Started — capturing at ${NORMAL_INTERVAL_MS}ms intervals`)
+        console.log(`[DatasetRecorder] Started - capturing at ${NORMAL_INTERVAL_MS}ms intervals`)
     }
 
     async stop() {
@@ -202,12 +207,12 @@ class DatasetRecorder {
         }
 
         console.log(
-            `[DatasetRecorder] Stopped — ${this._frameCount} frames saved` +
-            ` — session ${this._sessionId}`
+            `[DatasetRecorder] Stopped - ${this._frameCount} frames saved` +
+            ` - session ${this._sessionId}`
         )
     }
 
-    // ── Internal timer loop ───────────────────────────────────────────────────
+    // - Internal timer loop --------------------------
 
     _scheduleTick() {
         if (!this._running) return
@@ -253,10 +258,10 @@ class DatasetRecorder {
         this._scheduleTick()
     }
 
-    // ── Frame capture ─────────────────────────────────────────────────────────
+    // - Frame capture -----------------------------
 
     /**
-     * Resolve the intent to use for labeling — chop_tree is only valid when the
+     * Resolve the intent to use for labeling - chop_tree is only valid when the
      * log block is visible within CHOP_MAX_DIST, otherwise fall back to approach_tree.
      */
     _resolveIntent() {
@@ -329,7 +334,7 @@ class DatasetRecorder {
     }
 }
 
-// ── Public factory ────────────────────────────────────────────────────────────
+// - Public factory ------------------------------
 
 /**
  * Create and start a DatasetRecorder, attaching it to `bot._datasetRecorder`.
@@ -337,8 +342,8 @@ class DatasetRecorder {
  * risk of crashing if recording is disabled.
  *
  * @param {import('mineflayer').Bot} bot
- * @param {Object} mcData        — result of minecraftData(bot.version)
- * @param {number} viewerPort    — port of the running prismarine-viewer (default 3000)
+ * @param {Object} mcData        - result of minecraftData(bot.version)
+ * @param {number} viewerPort    - port of the running prismarine-viewer (default 3000)
  * @returns {Promise<DatasetRecorder>}
  */
 export async function setupRecorder(bot, mcData, viewerPort = 3000) {

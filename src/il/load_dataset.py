@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import math
 import random
 from collections import Counter
 from pathlib import Path
@@ -65,20 +64,17 @@ class MinecraftDataset(Dataset):
                         self.pair2id[action_label] = len(self.pair2id)
                     label_id = self.pair2id[action_label]
 
-                    # Auxiliary state-delta features (added by fix_temporal_labels.py)
-                    raw_aux = item.get("aux")
-                    aux_vec = None
-                    if raw_aux:
-                        aux_vec = [
-                            raw_aux.get("yaw_delta", 0.0) / math.pi,  # -> [-1, 1]
-                            raw_aux.get("speed", 0.0),
-                            raw_aux.get("dy", 0.0),
-                        ]
+                    # Tree-visibility aux features
+                    tree_visible = item.get("tree_visible")
+                    tree_distance = item.get("tree_distance")
+                    has_tree_aux = tree_visible is not None or tree_distance is not None
 
                     self.data.append({
                         "image_path": img_path,
                         "label": label_id,
-                        "aux": aux_vec,
+                        "tree_visible": bool(tree_visible) if tree_visible is not None else None,
+                        "tree_distance": float(tree_distance) if tree_distance is not None else None,
+                        "has_tree_aux": has_tree_aux,
                     })
                 except Exception as e:
                     error_count += 1
@@ -93,11 +89,16 @@ class MinecraftDataset(Dataset):
             labels = [d["label"] for d in self.data]
             print("Label distribution:", Counter(labels))
 
-        # Determine num_aux from first entry that has aux data
-        first_aux = next((d["aux"] for d in self.data if d["aux"] is not None), None)
-        self.num_aux = len(first_aux) if first_aux else 0
+        # Determine num_aux from whether tree aux fields are present
+        aux_samples = [d for d in self.data if d["has_tree_aux"]]
+        self.num_aux = 2 if aux_samples else 0
         if self.num_aux:
-            print(f"Aux features: {self.num_aux} (yaw_delta, speed, dy)")
+            pct_visible = 100.0 * sum(1 for d in self.data if d["tree_visible"]) / len(self.data)
+            dist_vals = [d["tree_distance"] / 32.0 for d in self.data if d["tree_distance"] is not None]
+            mean_dist = sum(dist_vals) / len(dist_vals) if dist_vals else 0.0
+            print(f"Aux feat : 2  (tree_visible, tree_distance_norm)")
+            print(f"  tree_visible=True : {pct_visible:.1f}%")
+            print(f"  tree_distance mean: {mean_dist:.2f} (norm)")
 
     def __len__(self):
         return len(self.data)
@@ -110,21 +111,19 @@ class MinecraftDataset(Dataset):
         if self.transforms:
             image = self.transforms(image)
 
-        # Build aux tensor
-        if item["aux"] is not None:
-            aux = torch.tensor(item["aux"], dtype=torch.float32)
+        # Build aux tensor: [tree_visible (0/1), tree_distance_norm (clipped 0-1)]
+        if item["has_tree_aux"]:
+            tv = 1.0 if item["tree_visible"] else 0.0
+            td = min(max(item["tree_distance"] / 32.0, 0.0), 1.0) if item["tree_distance"] is not None else 0.0
+            aux = torch.tensor([tv, td], dtype=torch.float32)
         else:
-            aux = torch.zeros(self.num_aux, dtype=torch.float32)
+            aux = torch.zeros(2, dtype=torch.float32)
 
         # Label-aware mirror flip (train only, enabled via use_mirror_flip)
         # Flips the image horizontally and swaps camera_yaw_p <-> camera_yaw_m labels.
-        # Also negates yaw_delta (aux[0]) so the aux signal stays consistent.
         if self.use_mirror_flip and random.random() < 0.5:
             image = torch.flip(image, dims=[2])
             label = self.mirror_label_map.get(label, label)
-            if self.num_aux > 0:
-                aux = aux.clone()
-                aux[0] = -aux[0]  # flip yaw_delta direction
 
         return image, aux, label
 
@@ -164,8 +163,8 @@ class MinecraftDataset(Dataset):
         train_ds.data = [self.data[i] for i in train_indices]
         train_ds.transforms = T.Compose([
             T.Resize((224, 224)),
-            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
-            T.RandomGrayscale(p=0.1),
+            # T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+            # T.RandomGrayscale(p=0.1),
             # NOTE: No RandomHorizontalFlip — plain flipping corrupts camera_yaw labels.
             # Label-aware mirror flip is handled in __getitem__ via use_mirror_flip.
             T.ToTensor(),

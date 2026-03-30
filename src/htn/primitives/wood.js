@@ -100,11 +100,10 @@ async function obtainWoodType(bot, mcData) {
  * @param {string} woodType - The wood type (e.g., "oak_log").
  * @returns {string} - The corresponding plank type (e.g., "oak_planks").
  */
-async function obtainPlankType(bot, mcData, woodType, metricsCollector = null) {
+async function obtainPlankType(bot, mcData, woodType) {
     let plankType = logToPlank[woodType];
     if (!plankType) {
         console.warn(`[Wood.js] No plank mapping for "${woodType}"`);
-        metricsCollector?.recordError(`No plank mapping for "${woodType}"`);
         throw new Error(`No plank mapping for "${woodType}"`);
     }
     return plankType;
@@ -139,10 +138,9 @@ function getWoodTypeFromInventory(bot) {
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {Object} mcData - The minecraft data for the bot's version.
  * @param {number} logs - The number of logs to chop.
- * @param {Object} metricsCollector - The metrics collector instance (optional).
  * @return {Promise<number>} - The final count of logs obtained.
  */
-async function chop(bot, mcData, logs = 4, metricsCollector = null) {
+async function chop(bot, mcData, logs = 4) {
     const woodType = await obtainWoodType(bot, mcData);
     console.log(`[Wood.js] Detected biome. Searching for: ${woodType}`);
     bot._datasetRecorder?.setWoodType(woodType)

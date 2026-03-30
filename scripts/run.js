@@ -58,15 +58,6 @@ if (agentTypes.length !== agentNames.length) {
     process.exit(1)
 }
 
-if (args['metrics-clean']) {
-    const metricsDir = path.join(process.cwd(), 'src', 'metrics', 'agent_metrics')
-    if (fs.existsSync(metricsDir)) {
-        fs.rmSync(metricsDir, { recursive: true, force: true })
-        fs.mkdirSync(metricsDir, { recursive: true })
-        console.log('[INFO] Métricas limpiadas')
-    }
-}
-
 if (args['memory-clean']) {
     const memoryDir = path.join(process.cwd(), 'src', 'agents', 'memories')
     if (fs.existsSync(memoryDir)) {
@@ -85,7 +76,6 @@ for (let i = 0; i < agentTypes.length; i++) {
     const agentType  = agentTypes[i]
     const agentName  = agentNames[i]
     const viewerPort = args['base-port'] + i
-    const metricsPath = `src/metrics/agent_metrics/${agentName}_metrics.json`
 
     const cmd = [
         'src/agents/add_agent.js',
