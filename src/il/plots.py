@@ -34,9 +34,9 @@ def plot_confusion_matrix(model, val_loader, dataset, device, normalize=True, sa
 
     print("Calculando confusion matrix...")
     with torch.no_grad():
-        for imgs, labels in tqdm(val_loader, desc="Eval"):
-            imgs, labels = imgs.to(device), labels.to(device)
-            preds = model(imgs).argmax(1)
+        for imgs, aux, labels in tqdm(val_loader, desc="Eval"):
+            imgs, aux, labels = imgs.to(device), aux.to(device), labels.to(device)
+            preds = model(imgs, aux).argmax(1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 

@@ -1,9 +1,12 @@
 import os
 import sys
 import json
+import math
+import random
 from collections import Counter
 from pathlib import Path
 from PIL import Image
+import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 import copy
@@ -13,6 +16,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from constants import IDLE_ACTION, BATCH_SIZE, IMAGENET_MEAN, IMAGENET_STD
+
+# Label pairs that are mirror images of each other (horizontal flip swaps them)
+MIRROR_PAIRS = [
+    ("camera_yaw_p45", "camera_yaw_m45"),
+    ("camera_yaw_p15", "camera_yaw_m15"),
+]
 
 
 def normalize_action_label(action):
@@ -32,6 +41,9 @@ class MinecraftDataset(Dataset):
         ])
 
         self.pair2id = {} if pair2id is None else dict(pair2id)
+        self.use_mirror_flip = False
+        self.mirror_label_map: dict[int, int] = {}
+        self.num_aux = 0  # set after loading
 
         print(f"Loading dataset from {jsonl_path}.")
         error_count = 0
@@ -53,9 +65,20 @@ class MinecraftDataset(Dataset):
                         self.pair2id[action_label] = len(self.pair2id)
                     label_id = self.pair2id[action_label]
 
+                    # Auxiliary state-delta features (added by fix_temporal_labels.py)
+                    raw_aux = item.get("aux")
+                    aux_vec = None
+                    if raw_aux:
+                        aux_vec = [
+                            raw_aux.get("yaw_delta", 0.0) / math.pi,  # -> [-1, 1]
+                            raw_aux.get("speed", 0.0),
+                            raw_aux.get("dy", 0.0),
+                        ]
+
                     self.data.append({
                         "image_path": img_path,
                         "label": label_id,
+                        "aux": aux_vec,
                     })
                 except Exception as e:
                     error_count += 1
@@ -70,35 +93,93 @@ class MinecraftDataset(Dataset):
             labels = [d["label"] for d in self.data]
             print("Label distribution:", Counter(labels))
 
+        # Determine num_aux from first entry that has aux data
+        first_aux = next((d["aux"] for d in self.data if d["aux"] is not None), None)
+        self.num_aux = len(first_aux) if first_aux else 0
+        if self.num_aux:
+            print(f"Aux features: {self.num_aux} (yaw_delta, speed, dy)")
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         item = self.data[idx]
         image = Image.open(item["image_path"]).convert("RGB")
+        label = item["label"]
+
         if self.transforms:
             image = self.transforms(image)
-        return image, item["label"]
+
+        # Build aux tensor
+        if item["aux"] is not None:
+            aux = torch.tensor(item["aux"], dtype=torch.float32)
+        else:
+            aux = torch.zeros(self.num_aux, dtype=torch.float32)
+
+        # Label-aware mirror flip (train only, enabled via use_mirror_flip)
+        # Flips the image horizontally and swaps camera_yaw_p <-> camera_yaw_m labels.
+        # Also negates yaw_delta (aux[0]) so the aux signal stays consistent.
+        if self.use_mirror_flip and random.random() < 0.5:
+            image = torch.flip(image, dims=[2])
+            label = self.mirror_label_map.get(label, label)
+            if self.num_aux > 0:
+                aux = aux.clone()
+                aux[0] = -aux[0]  # flip yaw_delta direction
+
+        return image, aux, label
 
     def get_transforms(self):
         return self.transforms
 
-    def load_dataset(self, split_ratio=0.8):
-        train_size = int(split_ratio * len(self.data))
+    def load_dataset(self, split_ratio=0.8, seed=42):
+        # --- Session-based split ---
+        # Group sample indices by recording session (parent directory of the image).
+        # Sessions are shuffled with a fixed seed and split 80/20 so that no session
+        # bleeds across train/val, avoiding temporal leakage and world-state bias.
+        session_to_indices: dict[str, list[int]] = {}
+        for i, item in enumerate(self.data):
+            parts = item["image_path"].replace("\\", "/").split("/")
+            key = parts[-2] if len(parts) >= 2 else None
+            if key is None:
+                print(f"  [WARN] Cannot parse session from '{item['image_path']}', assigning to train")
+                key = "__unresolved__"
+            session_to_indices.setdefault(key, []).append(i)
 
-        # Split cronológico: 80% inicial para train, 20% final para val.
-        # No aleatorio para respetar la temporalidad de los episodios.
-        train_indices = list(range(train_size))
-        val_indices   = list(range(train_size, len(self.data)))
+        sessions = sorted(session_to_indices.keys())
+        rng = random.Random(seed)
+        rng.shuffle(sessions)
+
+        n_train = max(1, int(len(sessions) * split_ratio))
+        train_sessions = set(sessions[:n_train])
+        val_sessions   = set(sessions[n_train:])
+
+        print(f"\n  Session split (seed={seed}): {len(train_sessions)} train / {len(val_sessions)} val")
+        print(f"  Train sessions: {sorted(train_sessions)}")
+        print(f"  Val   sessions: {sorted(val_sessions)}")
+
+        train_indices = [i for s in train_sessions for i in session_to_indices[s]]
+        val_indices   = [i for s in val_sessions   for i in session_to_indices[s]]
 
         train_ds = copy.deepcopy(self)
         train_ds.data = [self.data[i] for i in train_indices]
         train_ds.transforms = T.Compose([
             T.Resize((224, 224)),
-            # T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+            T.RandomGrayscale(p=0.1),
+            # NOTE: No RandomHorizontalFlip — plain flipping corrupts camera_yaw labels.
+            # Label-aware mirror flip is handled in __getitem__ via use_mirror_flip.
             T.ToTensor(),
             T.Normalize(IMAGENET_MEAN, IMAGENET_STD)
         ])
+        train_ds.use_mirror_flip = True
+        mirror_label_map: dict[int, int] = {}
+        for action_a, action_b in MIRROR_PAIRS:
+            id_a = self.pair2id.get(action_a)
+            id_b = self.pair2id.get(action_b)
+            if id_a is not None and id_b is not None:
+                mirror_label_map[id_a] = id_b
+                mirror_label_map[id_b] = id_a
+        train_ds.mirror_label_map = mirror_label_map
 
         val_ds = copy.deepcopy(self)
         val_ds.data = [self.data[i] for i in val_indices]

@@ -1,8 +1,13 @@
+import pkg from 'mineflayer-pathfinder'
+const { goals } = pkg
+
 import { hasItem } from './inventory.js'
 import { findNearestVisibleBlock } from './blocks.js'
 import { exploreRandom, exploreDown, moveToBlock } from './movement.js'
 
 import { getItemNameFromBlock } from './helpers.js'
+
+const MIN_MINING_DIST = 1.5 // If closer than this, back up before mining
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
@@ -166,6 +171,24 @@ async function mine(bot, block) {
         }
 
         await moveToBlock(bot, block, 4)
+
+        // If too close, collectBlock's internal pathfinder (GoalLookAtBlock) gets confused
+        // and loops doing movement instead of mining — back up to a safe distance first
+        const closeDist = bot.entity.position.distanceTo(block.position)
+        if (closeDist < MIN_MINING_DIST) {
+            console.warn(`[mine] ${botLabel} Too close (${closeDist.toFixed(2)} blocks), backing up...`)
+            const blockCenter = block.position.offset(0.5, 0, 0.5)
+            const dir = bot.entity.position.minus(blockCenter)
+            const dirLen = dir.norm()
+            const safeDir = dirLen > 0.01 ? dir.scaled(1 / dirLen) : { x: 1, y: 0, z: 0 }
+            const backupX = blockCenter.x + safeDir.x * 2.5
+            const backupZ = blockCenter.z + safeDir.z * 2.5
+            try {
+                await bot.pathfinder.goto(new goals.GoalNear(backupX, block.position.y, backupZ, 0.5))
+            } catch (e) {
+                console.warn(`[mine] ${botLabel} Backup failed: ${e.message}`)
+            }
+        }
 
         const escapedWaterNearTarget = await recoverFromWater(bot)
         if (!escapedWaterNearTarget) {

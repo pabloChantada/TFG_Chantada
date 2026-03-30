@@ -22,9 +22,9 @@ import { logInfo, logError } from './logging.js';
             .option(`type`, {
                 alias: `t`,
                 type: `string`,
-                description: `Agent type (htn, rl)`,
+                description: `Agent type (htn, rl, il)`,
                 default: `htn`,
-                choices: [`htn`, `rl`]
+                choices: [`htn`, `rl`, `il`]
             })
             .option(`minecraft-host`, {
                 alias: `h`,
@@ -49,6 +49,11 @@ import { logInfo, logError } from './logging.js';
                 description: `Path to export metrics`,
                 default: `./metrics`
             })
+            .option(`inference-url`, {
+                type: `string`,
+                description: `URL del servidor de inferencia IL (sólo para --type il)`,
+                default: `http://127.0.0.1:8765`
+            })
             .option(`minecraft-version`, {
                 type: `string`,
                 description: `Minecraft version`,
@@ -69,7 +74,8 @@ import { logInfo, logError } from './logging.js';
             minecraftHost: args[`minecraft-host`],
             minecraftPort: args[`minecraft-port`],
             metricsPath: args[`metrics-path`],
-            minecraftVersion: args[`minecraft-version`]
+            minecraftVersion: args[`minecraft-version`],
+            inferenceUrl: args[`inference-url`]
         });
 
         logInfo(agentName, `Settings: ${JSON.stringify(settings, null, 2)}`);
@@ -82,6 +88,9 @@ import { logInfo, logError } from './logging.js';
         } else if (agentType === `rl`) {
             const { RLAgent } = await import(`./types/rl_agent.js`);
             AgentClass = RLAgent;
+        } else if (agentType === `il`) {
+            const { ILAgent } = await import(`./types/il_agent.js`);
+            AgentClass = ILAgent;
         } else if (agentType === `llm`) {
             // TODO: Implement LLMAgent and import here, its easy but not the focus right now
             logError(agentName, new Error(`LLM agent type not implemented yet`));
@@ -121,6 +130,7 @@ function buildAgentSettings(agentName, agentType, options = {}) {
         auth: `offline`,
         version: options.minecraftVersion || `auto`,
         metrics_export_path: options.metricsPath || `./metrics`,
+        inference_url: options.inferenceUrl || `http://127.0.0.1:8765`,
         task: {
             goal: `Complete ${agentType.toUpperCase()} progression`
         }
