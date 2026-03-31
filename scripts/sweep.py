@@ -35,7 +35,8 @@ sys.path.insert(0, str(IL_DIR))
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from load_dataset import MinecraftDataset
-from model import MinecraftILModel
+from model import ResNetExtractor, MinecraftILModel
+from constants import STATE_DIM
 
 # -- Cancellation flag ----------------------------------------------------------
 _cancel = False
@@ -142,25 +143,40 @@ def sample_random_config(rng: pyrandom.Random) -> dict:
 
 # -- Core training loop ---------------------------------------------------------
 
-def _run_epoch(model, loader, criterion, device, optimizer=None):
+LSTM_HIDDEN = 256
+
+
+def _run_epoch(extractor, model, loader, criterion, device, optimizer=None):
     training = optimizer is not None
-    model.train() if training else model.eval()
+    extractor.train() if training else extractor.eval()
+    model.train()     if training else model.eval()
     total_loss = correct = total = 0
 
     ctx = torch.enable_grad() if training else torch.no_grad()
     with ctx:
-        for imgs, aux, labels in loader:
-            imgs, aux, labels = imgs.to(device), aux.to(device), labels.to(device)
+        for imgs, states, labels in loader:
+            # imgs:   (B, T, C, H, W)
+            # states: (B, T, STATE_DIM)
+            # labels: (B, T)
+            imgs, states, labels = imgs.to(device), states.to(device), labels.to(device)
+            B, T, C, H, W = imgs.shape
+
             if training:
                 optimizer.zero_grad()
-            logits = model(imgs, aux)
-            loss   = criterion(logits, labels)
+
+            features    = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
+            logits      = model(features, states)        # (B, T, num_actions)
+            logits_flat = logits.reshape(B * T, -1)
+            labels_flat = labels.reshape(B * T)
+
+            loss = criterion(logits_flat, labels_flat)
             if training:
                 loss.backward()
                 optimizer.step()
+
             total_loss += loss.item()
-            correct    += (logits.argmax(1) == labels).sum().item()
-            total      += labels.size(0)
+            correct    += (logits_flat.argmax(1) == labels_flat).sum().item()
+            total      += B * T
 
     return total_loss / len(loader), correct / total
 
@@ -181,14 +197,16 @@ def train_one_config(cfg, dataset, device, run_dir):
     )
 
     # -- Model -----------------------------------------------------------------
-    model = MinecraftILModel(
+    extractor = ResNetExtractor(backbone=cfg["backbone"]).to(device)
+    il_model  = MinecraftILModel(
         num_actions=len(dataset.pair2id),
-        backbone=cfg["backbone"],
-        num_aux=dataset.num_aux,
+        feat_dim=extractor.feat_dim,
+        state_dim=STATE_DIM,
+        lstm_hidden=LSTM_HIDDEN,
     ).to(device)
 
     # Override dropout in the head
-    for m in model.head:
+    for m in il_model.head:
         if isinstance(m, nn.Dropout):
             m.p = cfg["dropout"]
 
@@ -199,29 +217,30 @@ def train_one_config(cfg, dataset, device, run_dir):
     class_weights = torch.tensor(class_weights, dtype=torch.float, device=device)
 
     criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=cfg["label_smoothing"])
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=cfg["lr"], weight_decay=cfg["weight_decay"]
-    )
+    trainable = (list(filter(lambda p: p.requires_grad, extractor.parameters())) +
+                 list(il_model.parameters()))
+    optimizer = torch.optim.AdamW(trainable, lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", patience=2, factor=0.5, min_lr=1e-6
     )
 
     # -- Training --------------------------------------------------------------
-    model_path    = os.path.join(run_dir, "best_model.pth")
-    history       = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-    best_val_acc  = 0.0
-    best_epoch    = 0
-    patience_ctr  = 0
-    status        = "completed"
+    model_path   = os.path.join(run_dir, "best_model.pth")
+    config_path  = os.path.join(run_dir, "best_model_config.json")
+    pair2id_path = os.path.join(run_dir, "best_model_pair2id.json")
+    history      = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+    best_val_acc = 0.0
+    best_epoch   = 0
+    patience_ctr = 0
+    status       = "completed"
 
     for epoch in range(cfg["epochs"]):
         if _cancel:
             status = "cancelled"
             break
 
-        train_loss, train_acc = _run_epoch(model, train_loader, criterion, device, optimizer)
-        val_loss,   val_acc   = _run_epoch(model, val_loader,   criterion, device)
+        train_loss, train_acc = _run_epoch(extractor, il_model, train_loader, criterion, device, optimizer)
+        val_loss,   val_acc   = _run_epoch(extractor, il_model, val_loader,   criterion, device)
 
         history["train_loss"].append(train_loss)
         history["train_acc"].append(train_acc)
@@ -239,10 +258,19 @@ def train_one_config(cfg, dataset, device, run_dir):
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch   = epoch + 1
-            torch.save(model.state_dict(), model_path)
-            pair2id_path = model_path.replace(".pth", "_pair2id.json")
+            torch.save({"extractor": extractor.state_dict(),
+                        "model":     il_model.state_dict()}, model_path)
             with open(pair2id_path, "w") as fh:
                 json.dump(dataset.pair2id, fh, indent=2)
+            with open(config_path, "w") as fh:
+                json.dump({
+                    "backbone":    cfg["backbone"],
+                    "feat_dim":    extractor.feat_dim,
+                    "state_dim":   STATE_DIM,
+                    "lstm_hidden": LSTM_HIDDEN,
+                    "num_actions": len(dataset.pair2id),
+                    "seq_len":     dataset.seq_len,
+                }, fh, indent=2)
             print(f"    [BEST] {best_val_acc:.1%}")
             patience_ctr = 0
         else:

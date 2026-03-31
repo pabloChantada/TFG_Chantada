@@ -3,48 +3,92 @@ import torch.nn as nn
 from torchvision.models import resnet18, resnet34, resnet50, resnet101
 
 BACKBONES = {
-    'resnet18':  (resnet18,  'IMAGENET1K_V1'),
-    'resnet34':  (resnet34,  'IMAGENET1K_V1'),
-    'resnet50':  (resnet50,  'IMAGENET1K_V2'),
-    'resnet101': (resnet101, 'IMAGENET1K_V2'),
+    'resnet18':  (resnet18,  'IMAGENET1K_V1', 512),
+    'resnet34':  (resnet34,  'IMAGENET1K_V1', 512),
+    'resnet50':  (resnet50,  'IMAGENET1K_V2', 2048),
+    'resnet101': (resnet101, 'IMAGENET1K_V2', 2048),
 }
 
-class MinecraftILModel(nn.Module):
-    def __init__(self, num_actions, backbone: str = 'resnet18', num_aux: int = 0):
+
+class ResNetExtractor(nn.Module):
+    """
+    Extractor de deep features visuales basado en ResNet preentrenado.
+
+    Entrada : (N, C, H, W)  — N imágenes (el caller gestiona la dim. temporal)
+    Salida  : (N, feat_dim)
+
+    Capas congeladas: todo excepto layer4.
+    """
+
+    def __init__(self, backbone: str = 'resnet18'):
         super().__init__()
         if backbone not in BACKBONES:
             raise ValueError(f"Backbone '{backbone}' no soportado. Opciones: {list(BACKBONES.keys())}")
 
-        build_fn, weights = BACKBONES[backbone]
+        build_fn, weights, feat_dim = BACKBONES[backbone]
         base = build_fn(weights=weights)
-        in_features = base.fc.in_features
 
-        # Congelar el layer 4
         for name, param in base.named_parameters():
             if not name.startswith("layer4"):
                 param.requires_grad = False
 
-        # Replace fc with Identity to expose the pooled feature vector.
-        # The actual head is defined below and receives visual + aux features.
         base.fc = nn.Identity()
-    
-        self.model = base
-        self.backbone_name = backbone
-        self.num_aux = num_aux
 
-        # Head: concatenates visual features (in_features) + aux scalars (num_aux)
+        self.net           = base
+        self.backbone_name = backbone
+        self.feat_dim      = feat_dim
+
+    def forward(self, imgs: torch.Tensor) -> torch.Tensor:
+        return self.net(imgs)
+
+
+class MinecraftILModel(nn.Module):
+    """
+    Modelo temporal para IL.
+
+    Entrada:
+      features : (B, T, feat_dim)  — deep features extraídas por ResNetExtractor
+      states   : (B, T, state_dim) — vector de estado del bot (x, y, z, yaw, pitch)
+
+    Arquitectura:
+      1. El estado se proyecta a feat_dim con una capa lineal.
+      2. Se suma a los deep features (no concatenación).
+      3. Un LSTM procesa la secuencia fusionada.
+      4. Una cabeza lineal produce logits por timestep: (B, T, num_actions)
+
+    Loss de entrenamiento : CrossEntropyLoss (= CategoricalCrossEntropy, aplica
+                            log-softmax internamente). El forward devuelve LOGITS.
+    Inferencia            : aplicar F.softmax(logits[:, -1, :], dim=-1) sobre el
+                            último timestep para obtener probabilidades.
+    """
+
+    def __init__(self, num_actions: int, feat_dim: int = 512,
+                 state_dim: int = 5, lstm_hidden: int = 256):
+        super().__init__()
+        self.feat_dim    = feat_dim
+        self.state_dim   = state_dim
+        self.lstm_hidden = lstm_hidden
+
+        # Proyección del estado al espacio de deep features (para la suma)
+        self.state_proj = nn.Linear(state_dim, feat_dim)
+
+        # Procesado temporal
+        self.lstm = nn.LSTM(feat_dim, lstm_hidden, batch_first=True)
+
+        # Cabeza de clasificación
         self.head = nn.Sequential(
-            nn.Dropout(0.6),
-            nn.Linear(in_features + num_aux, num_actions)
+            nn.Dropout(0.5),
+            nn.Linear(lstm_hidden, num_actions),
         )
 
-    def forward(self, x, aux=None):
-        feats = self.model(x)  # (B, in_features)
-        if self.num_aux > 0:
-            if aux is not None:
-                feats = torch.cat([feats, aux], dim=1)
-            else:
-                # Inference without state: fill with zeros (graceful degradation)
-                zeros = torch.zeros(feats.size(0), self.num_aux, device=feats.device)
-                feats = torch.cat([feats, zeros], dim=1)
-        return self.head(feats)
+    def forward(self, features: torch.Tensor, states: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            features : (B, T, feat_dim)
+            states   : (B, T, state_dim)
+        Returns:
+            logits   : (B, T, num_actions)
+        """
+        fused    = features + self.state_proj(states)  # (B, T, feat_dim)
+        lstm_out, _ = self.lstm(fused)                 # (B, T, lstm_hidden)
+        return self.head(lstm_out)                     # (B, T, num_actions)

@@ -2,12 +2,11 @@
 Constantes compartidas del pipeline de Imitation Learning.
 
 Importar desde aquí evita tener que actualizar el mismo valor en varios archivos.
-Uso: from constants import ACTIONS, IDLE_ACTION, BATCH_SIZE
+Uso: from constants import ACTIONS, BATCH_SIZE
 """
 
-# Espacio de acciones discretas (formato actual — una acción por step)
+# Espacio de acciones discretas (una acción por step)
 ACTIONS = [
-    "idle",
     "move_forward_walk",
     "move_forward_sprint",
     "move_backward_walk",
@@ -27,7 +26,11 @@ ACTIONS = [
     "equip_wooden_axe",
 ]
 
-IDLE_ACTION = "idle"
+# Longitud de la ventana temporal (nº de frames por secuencia)
+SEQ_LEN = 4
+
+# Dimensión del vector de estado del bot (x, y, z, yaw, pitch)
+STATE_DIM = 5
 
 # Tamaño de batch por defecto para DataLoader
 BATCH_SIZE = 32

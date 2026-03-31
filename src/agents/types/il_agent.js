@@ -5,7 +5,7 @@
  *   1. Captura screenshot del prismarine-viewer via Puppeteer
  *   2. Envía la imagen al inference server (Python, port 8765)
  *   3. Recibe la acción predicha por el modelo
- *   4. Mapea la acción a su fase/primitiva HTN y la ejecuta
+ *   4. Mapea la acción discreta predicha y la ejecuta
  *   5. Repite
  *
  * Requisito: inference server corriendo antes de iniciar el agente.
@@ -13,15 +13,9 @@
  */
 
 import http from 'http'
-import minecraftData from 'minecraft-data'
-import pkg from 'mineflayer-pathfinder'
-const { pathfinder: pathfinderPlugin, Movements } = pkg
 
 import { BaseAgent }               from './base_agent.js'
 import { logInfo, logError }       from '../logging.js'
-import { findNearestVisibleBlock } from '../../htn/primitives/blocks.js'
-import { moveToBlock, exploreRandom } from '../../htn/primitives/movement.js'
-import { mine }                    from '../../htn/primitives/mining.js'
 import puppeteer                   from 'puppeteer'
 
 // ── Configuración ─────────────────────────────────────────────────────────────
@@ -36,12 +30,6 @@ const VIEWER_WIDTH      = 854
 const VIEWER_HEIGHT     = 480
 
 const DEG_TO_RAD = Math.PI / 180
-
-// Tipos de madera que el agente puede buscar (mismo orden que wood.js)
-const LOG_TYPES = [
-    'oak_log', 'spruce_log', 'birch_log', 'jungle_log',
-    'acacia_log', 'dark_oak_log', 'mangrove_log', 'cherry_log',
-]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,87 +47,22 @@ async function releaseAll(bot) {
     }
 }
 
-/**
- * Devuelve el bloque de madera visible más cercano entre todos los tipos,
- * o null si no hay ninguno.
- */
-function findNearestLog(bot, mcData, maxDist = 32) {
-    let nearest = null
-    let minDist = Infinity
-    for (const name of LOG_TYPES) {
-        const block = findNearestVisibleBlock(bot, mcData, name, maxDist)
-        if (!block) continue
-        const d = bot.entity.position.distanceTo(block.position)
-        if (d < minDist) { nearest = block; minDist = d }
-    }
-    return nearest
-}
-
-// ── Ejecución de acciones: IL → HTN ──────────────────────────────────────────
+// ── Ejecución de acciones ─────────────────────────────────────────────────────
 
 /**
- * Mapea una acción IL a su fase/primitiva HTN y la ejecuta.
+ * Ejecuta una acción discreta del espacio de acciones de constants.py.
  *
- * Etiquetas HTN (si el modelo fue entrenado con intents del DatasetRecorder):
- *   search_tree, approach_tree, chop_tree, explore
- *
- * Etiquetas low-level (si el modelo fue entrenado con acciones discretas de constants.py):
- *   idle, move_forward_walk, move_forward_sprint, move_backward_walk,
+ * Acciones: move_forward_walk, move_forward_sprint, move_backward_walk,
  *   move_left, move_right, jump, sneak,
  *   camera_yaw_p15/m15/p45/m45, camera_pitch_p15/m15/p45/m45,
  *   attack, equip_wooden_axe
  */
-async function executeILAction(bot, mcData, action) {
+async function executeILAction(bot, action) {
     await releaseAll(bot)
 
     switch (action) {
 
-        // ── Fases HTN de alto nivel ───────────────────────────────────────────
-
-        case 'search_tree': {
-            // Girar en incrementos de 45° buscando un tronco visible
-            const step = 45 * DEG_TO_RAD
-            for (let i = 0; i < 8; i++) {
-                const found = findNearestLog(bot, mcData, 16)
-                if (found) break
-                await bot.look(bot.entity.yaw + step, bot.entity.pitch, false)
-                await sleep(150)
-            }
-            break
-        }
-
-        case 'approach_tree': {
-            // Pathfind hacia el tronco visible más cercano
-            const log = findNearestLog(bot, mcData, 32)
-            if (log) {
-                try { await moveToBlock(bot, log, 4) } catch (_) {}
-            } else {
-                // Sin árbol visible: caminar hacia delante brevemente
-                bot.setControlState('forward', true)
-                await sleep(MOVE_HOLD_MS)
-                bot.setControlState('forward', false)
-            }
-            break
-        }
-
-        case 'chop_tree': {
-            // Minar el tronco más cercano usando la primitiva HTN mine()
-            const log = findNearestLog(bot, mcData, 8)
-            if (log) {
-                try { await mine(bot, log) } catch (_) {}
-            }
-            break
-        }
-
-        case 'explore': {
-            try { await exploreRandom(bot, 30) } catch (_) {}
-            break
-        }
-
         // ── Acciones de movimiento ────────────────────────────────────────────
-
-        case 'idle':
-            break
 
         case 'move_forward_walk':
             bot.setControlState('forward', true)
@@ -243,7 +166,6 @@ export class ILAgent extends BaseAgent {
         super(agentName, 'il')
         this.memoryPath     = `src/agents/memories/${agentName}_memory.json`
         this.inferencePort  = inferencePort
-        this._mcData        = null
         this._browser       = null
         this._page          = null
         this._running       = false
@@ -267,9 +189,6 @@ export class ILAgent extends BaseAgent {
             await this.setupViewer(viewerPort)
             this._setupErrorHandlers()
 
-            this._mcData = minecraftData(this.bot.version)
-            this._setupPathfinder()
-
             logInfo(this.name, 'Iniciando Puppeteer...')
             await this._startPuppeteer(viewerPort)
 
@@ -282,16 +201,6 @@ export class ILAgent extends BaseAgent {
             await this._shutdown()
             process.exit(1)
         }
-    }
-
-    _setupPathfinder() {
-        this.bot.loadPlugin(pathfinderPlugin)
-        const movements = new Movements(this.bot, this._mcData)
-        movements.canDig = true
-        movements.dontMineUnderFallingBlock = false
-        this.bot.pathfinder.setMovements(movements)
-        this.bot.pathfinder.thinkTimeout = 2000
-        this.bot.pathfinder.tickTimeout  = 15
     }
 
     async _startPuppeteer(viewerPort) {
@@ -325,7 +234,7 @@ export class ILAgent extends BaseAgent {
                 this._stepCount++
                 logInfo(this.name, `step=${this._stepCount}  action=${action}  conf=${(confidence * 100).toFixed(1)}%`)
 
-                await executeILAction(this.bot, this._mcData, action)
+                await executeILAction(this.bot, action)
 
                 const remaining = STEP_INTERVAL_MS - (Date.now() - t0)
                 if (remaining > 0) await sleep(remaining)
@@ -354,6 +263,10 @@ export class ILAgent extends BaseAgent {
     // ── Llamada al inference server ───────────────────────────────────────────
 
     _requestPrediction(pngBuffer) {
+        const pos   = this.bot.entity.position
+        const state = [pos.x, pos.y, pos.z, this.bot.entity.yaw, this.bot.entity.pitch]
+            .map(v => v.toFixed(4)).join(',')
+
         return new Promise((resolve) => {
             const options = {
                 hostname: INFERENCE_HOST,
@@ -363,6 +276,7 @@ export class ILAgent extends BaseAgent {
                 headers:  {
                     'Content-Type':   'image/png',
                     'Content-Length': pngBuffer.length,
+                    'X-Bot-State':    state,
                 },
             }
 

@@ -1,70 +1,61 @@
 /**
- * DatasetRecorder - Intent-aware dataset collection for the HTN chopping pipeline.
+ * DatasetRecorder - Recolección de dataset con acciones discretas de bajo nivel.
  *
- * Each captured frame is tagged with the HTN sub-task that caused it, eliminating
- * the label noise produced by continuous capture (e.g. "turning to search" vs
- * "turning to align for chopping").
+ * En cada frame capturado se detecta la acción discreta real que ejecuta el bot
+ * leyendo bot.controlState (movimiento) y el delta de yaw/pitch entre capturas (cámara).
+ * Los frames sin acción detectable se descartan.
  *
- * Intent labels (recorded):
- *   search_tree   - bot is scanning/rotating because no tree is visible yet
- *   approach_tree - bot is walking toward a visible tree (moveToBlock active)
- *   chop_tree     - bot is actively breaking a log (collectBlock.collect active)
- *   explore       - bot is doing exploreRandom() because no tree was found
+ * Acciones detectables:
+ *   move_forward_sprint  - forward + sprint activos
+ *   move_forward_walk    - forward activo
+ *   move_backward_walk   - back activo
+ *   move_left            - left activo
+ *   move_right           - right activo
+ *   jump                 - jump activo
+ *   sneak                - sneak activo
+ *   attack               - bot.targetDigBlock no nulo
+ *   camera_yaw_p15/m15   - delta yaw entre 5° y 30°
+ *   camera_yaw_p45/m45   - delta yaw >= 30°
+ *   camera_pitch_p15/m15 - delta pitch entre 5° y 30°
+ *   camera_pitch_p45/m45 - delta pitch >= 30°
  *
- * Excluded intents (bot executes them but no frames are captured):
- *   collect_wood  - items collected passively after block drop; not learnable from vision
+ * Nota: equip_wooden_axe no se detecta automáticamente (acción instantánea sin
+ * estado persistente). Se puede añadir en sesiones de teleoperación manual.
  *
- * Capture rates:
- *   Normal (search/approach/collect): 1 frame / 800 ms
- *   chop_tree:                        1 frame / 1200 ms  (animation is repetitive)
- *   explore:                          1 frame / 2000 ms  (least informative)
+ * Metadatos adicionales grabados por frame:
+ *   state        - {x, y, z, yaw, pitch} del bot en el momento de captura
+ *   tree_visible - si hay un tronco visible dentro de 32 bloques
+ *   tree_distance - distancia al tronco visible más cercano
  *
- * Phase-transition handling:
- *   - First 300 ms after an intent change are skipped (visual state unsettled)
- *   - After that settle window, an additional 500 ms post-transition pause is
- *     enforced before the first new capture, so the bot posture has stabilised.
- *
- * Integration:
- *   // In main_htn.js startChopTrees():
+ * Integración:
  *   import { setupRecorder } from '../il/dataset_recorder.js'
  *   await setupRecorder(bot, mcData)
- *
- *   // In HTN primitives (wood.js, mining.js):
- *   bot._datasetRecorder?.setIntent('approach_tree')
- *   bot._datasetRecorder?.setWoodType(woodType)
+ *   bot._datasetRecorder?.setWoodType('oak_log')  // desde HTN primitives
  */
 
-import fs   from 'fs'
-import path from 'path'
+import fs      from 'fs'
+import path    from 'path'
 import puppeteer from 'puppeteer'
 import { findNearestVisibleBlock } from '../htn/primitives/blocks.js'
 
 // - Timing ----------------------------------
-const TICK_MS             = 200   // Timer resolution (how often we check)
-const NORMAL_INTERVAL_MS  = 800   // Default capture interval
-const CHOP_INTERVAL_MS    = 1200  // chop_tree: animation is repetitive
-const EXPLORE_INTERVAL_MS = 2000  // explore: least informative phase
-const PHASE_SETTLE_MS     = 300   // Skip frames this long after intent change
-const PHASE_PAUSE_MS      = 500   // Additional wait before first capture post-transition
+const TICK_MS            = 200   // Resolución del timer
+const NORMAL_INTERVAL_MS = 800   // Intervalo de captura
+
+// - Umbrales de detección de cámara (en radianes) ------
+const MIN_CAMERA_RAD   = 5  * Math.PI / 180   // < 5°  → ignorar
+const SPLIT_CAMERA_RAD = 30 * Math.PI / 180   // ≥ 30° → acción p45/m45
 
 // - Screenshot / viewer ----------------------------
 const VIEWER_WIDTH      = 854
 const VIEWER_HEIGHT     = 480
 const BROWSER_WARMUP_MS = 2000
 
-// - Chop validation ------------------------------
-// A frame is only labeled chop_tree if the log is visible within this distance
-const CHOP_MAX_DIST = 4
-
 // - Output directory -----------------------------
 const RECORDINGS_DIR = 'data/recordings'
 
 // ---------------------------------------
 
-/**
- * Scan RECORDINGS_DIR for existing session files and return the next sequential N.
- * Falls back to 1 if the directory doesnt exist or is empty.
- */
 function nextSessionNumber() {
     let maxN = 0
     try {
@@ -84,38 +75,30 @@ function generateSessionId() {
     return `Rec_${n}_${hash}`
 }
 
-function getCaptureInterval(intent) {
-    if (intent === 'chop_tree') return CHOP_INTERVAL_MS
-    if (intent === 'explore')   return EXPLORE_INTERVAL_MS
-    return NORMAL_INTERVAL_MS
-}
-
 // - DatasetRecorder ------------------------------
 
 class DatasetRecorder {
     /**
      * @param {import('mineflayer').Bot} bot
-     * @param {Object} mcData  - result of minecraftData(bot.version)
+     * @param {Object} mcData  - resultado de minecraftData(bot.version)
      */
     constructor(bot, mcData) {
-        this.bot  = bot
+        this.bot    = bot
         this.mcData = mcData
 
-        // Intent state
-        this.currentIntent     = 'search_tree'
-        this._intentChangeTime = Date.now()
-
-        // Capture timing
-        this._lastCaptureTime = 0
-
         // Session
-        this._sessionId    = generateSessionId()
-        this._frameCount   = 0
+        this._sessionId  = generateSessionId()
+        this._frameCount = 0
 
-        // Runtime state
+        // Runtime
         this._running   = false
         this._timer     = null
         this._capturing = false
+        this._lastCaptureTime = 0
+
+        // Seguimiento de cámara (delta entre capturas)
+        this._prevYaw   = 0
+        this._prevPitch = 0
 
         // Puppeteer
         this._browser = null
@@ -126,35 +109,26 @@ class DatasetRecorder {
         this._jsonlPath      = null
         this._jsonlStream    = null
 
-        // Wood type cache (set by chop() after obtainWoodType resolves)
+        // Tipo de madera (para metadatos tree_visible / tree_distance)
         this._woodType = null
     }
 
     // - Public API ------------------------------
 
     /**
-     * Set the current HTN sub-task intent.
-     * Must be called explicitly by HTN code - never inferred from heuristics.
-     * @param {'search_tree'|'approach_tree'|'chop_tree'|'collect_wood'|'explore'} intent
-     */
-    setIntent(intent) {
-        // collect_wood is excluded from the dataset: the bot executes it normally
-        // but no frames are recorded (items are collected passively, not learnable).
-        if (intent === 'collect_wood') return
-        if (intent === this.currentIntent) return
-        console.log(`[DatasetRecorder] ${this.currentIntent} → ${intent}`)
-        this.currentIntent     = intent
-        this._intentChangeTime = Date.now()
-    }
-
-    /**
-     * Cache the detected wood type so that tree_visible / tree_distance
-     * fields use findNearestVisibleBlock with the correct block name.
+     * Tipo de madera que el bot está buscando/talando.
+     * Usado para calcular tree_visible y tree_distance.
      * @param {string} woodType  e.g. 'oak_log'
      */
     setWoodType(woodType) {
         this._woodType = woodType
     }
+
+    /**
+     * No-op: mantenido para compatibilidad con llamadas desde primitivas HTN.
+     * La acción ya no se etiqueta por intent sino detectada en _capture().
+     */
+    setIntent(_intent) {}
 
     // - Lifecycle -------------------------------
 
@@ -169,7 +143,6 @@ class DatasetRecorder {
         console.log(`[DatasetRecorder] JSONL    : ${this._jsonlPath}`)
         console.log(`[DatasetRecorder] Viewer   : http://localhost:${viewerPort}`)
 
-        // Launch Puppeteer and connect to the prismarine-viewer
         this._browser = await puppeteer.launch({ headless: 'new' })
         this._page    = await this._browser.newPage()
         await this._page.setViewport({ width: VIEWER_WIDTH, height: VIEWER_HEIGHT })
@@ -178,21 +151,23 @@ class DatasetRecorder {
             timeout:   15000
         })
         await this._page.waitForSelector('canvas', { timeout: 10000 })
-        // Let the renderer draw the first chunks before we start capturing
         await new Promise(r => setTimeout(r, BROWSER_WARMUP_MS))
 
-        this._running          = true
-        this._intentChangeTime = Date.now()
+        // Inicializar seguimiento de cámara
+        this._prevYaw   = this.bot.entity.yaw
+        this._prevPitch = this.bot.entity.pitch
+
+        this._running         = true
+        this._lastCaptureTime = Date.now()
         this._scheduleTick()
 
-        console.log(`[DatasetRecorder] Started - capturing at ${NORMAL_INTERVAL_MS}ms intervals`)
+        console.log(`[DatasetRecorder] Iniciado — intervalo ${NORMAL_INTERVAL_MS}ms`)
     }
 
     async stop() {
         this._running = false
         if (this._timer) { clearTimeout(this._timer); this._timer = null }
 
-        // Let any in-progress capture finish
         await new Promise(r => setTimeout(r, TICK_MS * 3))
 
         if (this._jsonlStream) {
@@ -207,8 +182,8 @@ class DatasetRecorder {
         }
 
         console.log(
-            `[DatasetRecorder] Stopped - ${this._frameCount} frames saved` +
-            ` - session ${this._sessionId}`
+            `[DatasetRecorder] Parado — ${this._frameCount} frames guardados` +
+            ` — sesión ${this._sessionId}`
         )
     }
 
@@ -225,23 +200,8 @@ class DatasetRecorder {
             return
         }
 
-        const now             = Date.now()
-        const timeSinceChange = now - this._intentChangeTime
-
-        // Skip frames during the phase-transition ambiguity window
-        if (timeSinceChange < PHASE_SETTLE_MS) {
-            this._scheduleTick()
-            return
-        }
-
-        // The next eligible capture time is the later of:
-        //   (a) last capture + capture interval for this intent
-        //   (b) intent change time + post-transition pause
-        const nextCapture = Math.max(
-            this._lastCaptureTime + getCaptureInterval(this.currentIntent),
-            this._intentChangeTime + PHASE_PAUSE_MS
-        )
-        if (now < nextCapture) {
+        const now = Date.now()
+        if (now < this._lastCaptureTime + NORMAL_INTERVAL_MS) {
             this._scheduleTick()
             return
         }
@@ -250,7 +210,7 @@ class DatasetRecorder {
         try {
             await this._capture()
         } catch (e) {
-            console.warn(`[DatasetRecorder] Capture error: ${e.message}`)
+            console.warn(`[DatasetRecorder] Error de captura: ${e.message}`)
         }
         this._capturing       = false
         this._lastCaptureTime = Date.now()
@@ -258,35 +218,53 @@ class DatasetRecorder {
         this._scheduleTick()
     }
 
-    // - Frame capture -----------------------------
+    // - Detección de acción discreta -----------------
 
     /**
-     * Resolve the intent to use for labeling - chop_tree is only valid when the
-     * log block is visible within CHOP_MAX_DIST, otherwise fall back to approach_tree.
+     * Detecta la acción discreta que el bot está ejecutando en este momento.
+     * Prioridad: movimiento > ataque > cámara.
+     * Devuelve null si no hay acción detectable (frame a descartar).
      */
-    _resolveIntent() {
-        if (this.currentIntent !== 'chop_tree' || !this._woodType) {
-            return this.currentIntent
+    _detectAction() {
+        const cs = this.bot.controlState
+
+        // Movimiento (control states persistentes)
+        if (cs.forward && cs.sprint) return 'move_forward_sprint'
+        if (cs.forward)              return 'move_forward_walk'
+        if (cs.back)                 return 'move_backward_walk'
+        if (cs.left)                 return 'move_left'
+        if (cs.right)                return 'move_right'
+        if (cs.jump)                 return 'jump'
+        if (cs.sneak)                return 'sneak'
+
+        // Ataque: bot.targetDigBlock es no nulo mientras bot.dig() está activo
+        if (this.bot.targetDigBlock) return 'attack'
+
+        // Cámara: delta respecto al frame anterior
+        const dyaw   = this.bot.entity.yaw   - this._prevYaw
+        const dpitch = this.bot.entity.pitch - this._prevPitch
+        const absYaw   = Math.abs(dyaw)
+        const absPitch = Math.abs(dpitch)
+
+        if (absYaw >= absPitch && absYaw >= MIN_CAMERA_RAD) {
+            if (absYaw >= SPLIT_CAMERA_RAD) return dyaw > 0 ? 'camera_yaw_p45' : 'camera_yaw_m45'
+            return dyaw > 0 ? 'camera_yaw_p15' : 'camera_yaw_m15'
         }
-        try {
-            const block = findNearestVisibleBlock(
-                this.bot, this.mcData, this._woodType, CHOP_MAX_DIST
-            )
-            if (!block) return 'approach_tree'
-        } catch (_) {}
-        return 'chop_tree'
+        if (absPitch >= MIN_CAMERA_RAD) {
+            if (absPitch >= SPLIT_CAMERA_RAD) return dpitch > 0 ? 'camera_pitch_p45' : 'camera_pitch_m45'
+            return dpitch > 0 ? 'camera_pitch_p15' : 'camera_pitch_m15'
+        }
+
+        return null  // sin acción detectable → descartar frame
     }
 
     /**
-     * Query findNearestVisibleBlock to get tree_visible / tree_distance metadata.
-     * Uses the cached wood type; returns false/null if wood type is unknown yet.
+     * Metadatos del árbol más cercano (para auxiliar al modelo).
      */
     _getTreeInfo() {
         if (!this._woodType) return { tree_visible: false, tree_distance: null }
         try {
-            const block = findNearestVisibleBlock(
-                this.bot, this.mcData, this._woodType, 32
-            )
+            const block = findNearestVisibleBlock(this.bot, this.mcData, this._woodType, 32)
             if (!block) return { tree_visible: false, tree_distance: null }
             const dist = Math.round(
                 this.bot.entity.position.distanceTo(block.position) * 10
@@ -297,15 +275,26 @@ class DatasetRecorder {
         }
     }
 
+    // - Frame capture -----------------------------
+
     async _capture() {
         if (!this._page) return
+
+        const curYaw   = this.bot.entity.yaw
+        const curPitch = this.bot.entity.pitch
+
+        const action = this._detectAction()
+
+        // Actualizar seguimiento de cámara siempre (tanto si se guarda como si no)
+        this._prevYaw   = curYaw
+        this._prevPitch = curPitch
+
+        if (action === null) return  // frame sin acción → descartar
 
         const canvas = await this._page.$('canvas')
         if (!canvas) return
 
-        const intent                     = this._resolveIntent()
         const { tree_visible, tree_distance } = this._getTreeInfo()
-
         const pos      = this.bot.entity.position
         const frameNum = String(this._frameCount).padStart(5, '0')
         const ts       = new Date().toISOString().replace(/:/g, '-').replace('.', '-')
@@ -317,13 +306,13 @@ class DatasetRecorder {
         const entry = {
             image: imgPath.replace(/\\/g, '/'),
             state: {
-                x:     Math.round(pos.x * 1000) / 1000,
-                y:     Math.round(pos.y * 1000) / 1000,
-                z:     Math.round(pos.z * 1000) / 1000,
-                yaw:   Math.round(this.bot.entity.yaw   * 10000) / 10000,
-                pitch: Math.round(this.bot.entity.pitch * 10000) / 10000
+                x:     Math.round(pos.x     * 1000) / 1000,
+                y:     Math.round(pos.y     * 1000) / 1000,
+                z:     Math.round(pos.z     * 1000) / 1000,
+                yaw:   Math.round(curYaw    * 10000) / 10000,
+                pitch: Math.round(curPitch  * 10000) / 10000
             },
-            action:       intent,
+            action,
             session_id:   this._sessionId,
             tree_visible,
             tree_distance
@@ -337,14 +326,7 @@ class DatasetRecorder {
 // - Public factory ------------------------------
 
 /**
- * Create and start a DatasetRecorder, attaching it to `bot._datasetRecorder`.
- * HTN primitives can then call `bot._datasetRecorder?.setIntent(...)` with no
- * risk of crashing if recording is disabled.
- *
- * @param {import('mineflayer').Bot} bot
- * @param {Object} mcData        - result of minecraftData(bot.version)
- * @param {number} viewerPort    - port of the running prismarine-viewer (default 3000)
- * @returns {Promise<DatasetRecorder>}
+ * Crea e inicia un DatasetRecorder, adjuntándolo a bot._datasetRecorder.
  */
 export async function setupRecorder(bot, mcData, viewerPort = 3000) {
     const recorder = new DatasetRecorder(bot, mcData)
@@ -353,13 +335,12 @@ export async function setupRecorder(bot, mcData, viewerPort = 3000) {
     try {
         await recorder.start(viewerPort)
     } catch (e) {
-        console.warn(`[DatasetRecorder] Could not start (viewer on port ${viewerPort}?): ${e.message}`)
-        console.warn(`[DatasetRecorder] Recording disabled for this session`)
+        console.warn(`[DatasetRecorder] No se pudo iniciar (¿viewer en puerto ${viewerPort}?): ${e.message}`)
+        console.warn(`[DatasetRecorder] Grabación desactivada para esta sesión`)
         bot._datasetRecorder = null
         return recorder
     }
 
-    // Automatically stop when the bot disconnects
     bot.once('end', () => {
         if (bot._datasetRecorder) {
             bot._datasetRecorder.stop().catch(() => {})

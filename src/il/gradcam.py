@@ -90,7 +90,7 @@ def plot_gradcam(model, image_path, dataset, ACTIONS):
     # Mapeo a nombre de acción
     id2pair = {v: k for k, v in dataset.pair2id.items()}
     pred_action = id2pair[pred_class]
-    slot_name = "idle" if pred_action[0] == "idle" else ACTIONS.get(pred_action[0], f"slot_{pred_action[0]}")
+    slot_name = ACTIONS.get(pred_action[0], f"slot_{pred_action[0]}")
     
     # Imagen para visualización (resize sin normalizar)
     img_array = np.array(orig_image.resize((224, 224)))
