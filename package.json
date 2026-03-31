@@ -12,7 +12,6 @@
   },
   "license": "ISC",
   "author": "",
-  "_comment": "Using ES modules to allow for top-level await",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -46,5 +45,10 @@
     "socket.io-parser": "^4.2.4",
     "socket.io": "^4.7.2",
     "axios": "^1.7.9"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "devDependencies": {},
+  "keywords": []
 }
