@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import math
 import random
 import copy
 from collections import Counter
@@ -87,10 +88,12 @@ class MinecraftDataset(Dataset):
 
                     # Camera delta continuo (dyaw, dpitch en radianes)
                     cd = item.get("camera_delta") or {}
-                    camera_raw = torch.tensor([
-                        float(cd.get("dyaw",   0.0)),
-                        float(cd.get("dpitch", 0.0)),
-                    ], dtype=torch.float32)
+                    raw_dyaw   = float(cd.get("dyaw",   0.0))
+                    raw_dpitch = float(cd.get("dpitch", 0.0))
+                    # Fix yaw wrapping: normalizar a [-π, π]
+                    while raw_dyaw >  math.pi: raw_dyaw -= 2 * math.pi
+                    while raw_dyaw < -math.pi: raw_dyaw += 2 * math.pi
+                    camera_raw = torch.tensor([raw_dyaw, raw_dpitch], dtype=torch.float32)
 
                     session_id = item.get("session_id", "__unknown__")
 

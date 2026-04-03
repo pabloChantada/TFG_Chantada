@@ -11,11 +11,15 @@
  * Requisito: inference server corriendo antes de iniciar el agente.
  */
 
+import fs   from 'fs'
+import path from 'path'
 import http from 'http'
 
 import { BaseAgent }               from './base_agent.js'
 import { logInfo, logError }       from '../logging.js'
 import puppeteer                   from 'puppeteer'
+import minecraftData               from 'minecraft-data'
+import { findNearestVisibleBlock } from '../../htn/primitives/blocks.js'
 
 // ── Configuración ─────────────────────────────────────────────────────────────
 const INFERENCE_HOST  = 'localhost'
@@ -28,7 +32,10 @@ const BROWSER_WARMUP_MS = 2000  // Espera inicial del viewer
 const VIEWER_WIDTH      = 854
 const VIEWER_HEIGHT     = 480
 
-const DEG_TO_RAD = Math.PI / 180
+const ACTION_SWITCH_THRESHOLD = 0.8  // Confianza mínima para cambiar de acción
+
+const CAMERA_DEAD_ZONE = 0.01   // rad (~0.6°) — deltas menores se ignoran (ruido)
+const PITCH_DECAY      = 0.9   // Factor de decaimiento del pitch hacia horizonte cada step
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,15 +65,18 @@ async function releaseAll(bot) {
  */
 async function executeILAction(bot, action, cameraDelta = null) {
     await releaseAll(bot)
+    let skipCameraDelta = false
 
     switch (action) {
 
         // ── Acciones de movimiento ────────────────────────────────────────────
 
-        case 'move_forward_walk':
+        case 'move_forward_jump':
             bot.setControlState('forward', true)
+            bot.setControlState('sprint', true)
+            bot.setControlState('jump', true)
             await sleep(MOVE_HOLD_MS)
-            bot.setControlState('forward', false)
+            await releaseAll(bot)
             break
 
         case 'move_forward_sprint':
@@ -111,7 +121,11 @@ async function executeILAction(bot, action, cameraDelta = null) {
         case 'attack': {
             const block = bot.blockAtCursor(4.5)
             if (block && block.type !== 0 && bot.canDigBlock(block)) {
+                // Apuntar cámara al bloque antes de picar (evita drift de deltas acumulados)
+                const bp = block.position.offset(0.5, 0.5, 0.5)
+                await bot.lookAt(bp, false)
                 try { await bot.dig(block, 'ignore') } catch (_) {}
+                skipCameraDelta = true  // Solo si hay bloque; si no, dejar que el delta corrija la cámara
             }
             break
         }
@@ -130,12 +144,29 @@ async function executeILAction(bot, action, cameraDelta = null) {
             logError('ILAgent', new Error(`Acción desconocida: "${action}"`))
     }
 
-    // ── Aplicar delta de cámara continuo (siempre, tras la acción) ────────
-    if (cameraDelta) {
-        const { dyaw, dpitch } = cameraDelta
+    // ── Aplicar delta de cámara continuo (salvo durante attack, donde se fija al bloque) ──
+    if (cameraDelta && !skipCameraDelta) {
+        let { dyaw, dpitch } = cameraDelta
+
+        // Dead zone: ignorar deltas menores al umbral (ruido del modelo)
+        const dyawFiltered   = Math.abs(dyaw)   < CAMERA_DEAD_ZONE ? 0 : dyaw
+        const dpitchFiltered = Math.abs(dpitch)  < CAMERA_DEAD_ZONE ? 0 : dpitch
+
+        if (dyaw !== dyawFiltered || dpitch !== dpitchFiltered) {
+            logInfo('Camera', `dead-zone: dyaw ${dyaw.toFixed(4)}→${dyawFiltered.toFixed(4)}  dpitch ${dpitch.toFixed(4)}→${dpitchFiltered.toFixed(4)}`)
+        }
+
+        // Pitch decay: tirar hacia horizonte (0) para contrarrestar deriva
+        const rawPitch    = bot.entity.pitch + dpitchFiltered
+        const decayedPitch = rawPitch * PITCH_DECAY
+
+        if (Math.abs(rawPitch - decayedPitch) > 0.001) {
+            logInfo('Camera', `pitch-decay: ${rawPitch.toFixed(4)} → ${decayedPitch.toFixed(4)}`)
+        }
+
         await bot.look(
-            bot.entity.yaw + dyaw,
-            clampPitch(bot.entity.pitch + dpitch),
+            bot.entity.yaw + dyawFiltered,
+            clampPitch(decayedPitch),
             false,
         )
     }
@@ -144,7 +175,7 @@ async function executeILAction(bot, action, cameraDelta = null) {
 // ── ILAgent ───────────────────────────────────────────────────────────────────
 
 export class ILAgent extends BaseAgent {
-    constructor(agentName, inferencePort = INFERENCE_PORT) {
+    constructor(agentName, inferencePort = INFERENCE_PORT, recordInference = false) {
         super(agentName, 'il')
         this.memoryPath     = `src/agents/memories/${agentName}_memory.json`
         this.inferencePort  = inferencePort
@@ -152,6 +183,12 @@ export class ILAgent extends BaseAgent {
         this._page          = null
         this._running       = false
         this._stepCount     = 0
+        this._mcData        = null
+        // Inference recording
+        this._record        = recordInference
+        this._recordDir     = null
+        this._recordStream  = null
+        this._lastAction    = null  // Última acción ejecutada (para umbral de cambio)
     }
 
     // ── Inicio ────────────────────────────────────────────────────────────────
@@ -167,12 +204,24 @@ export class ILAgent extends BaseAgent {
 
         try {
             await this.connectBot(settings)
+            this._mcData = minecraftData(this.bot.version)
             await this.clearMemory()
             await this.setupViewer(viewerPort)
             this._setupErrorHandlers()
 
             logInfo(this.name, 'Iniciando Puppeteer...')
             await this._startPuppeteer(viewerPort)
+
+            // Inference recording setup
+            if (this._record) {
+                const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+                this._recordDir = path.join('data', 'inference_logs', `${this.name}_${ts}`)
+                fs.mkdirSync(path.join(this._recordDir, 'screenshots'), { recursive: true })
+                this._recordStream = fs.createWriteStream(
+                    path.join(this._recordDir, 'log.jsonl'), { flags: 'a' }
+                )
+                logInfo(this.name, `Recording inferencia en: ${this._recordDir}`)
+            }
 
             logInfo(this.name, `Inference server: http://${INFERENCE_HOST}:${this.inferencePort}${INFERENCE_PATH}`)
             logInfo(this.name, 'Arrancando loop IL...')
@@ -212,12 +261,51 @@ export class ILAgent extends BaseAgent {
                 const prediction = await this._requestPrediction(imgBuffer)
                 if (!prediction) { await sleep(STEP_INTERVAL_MS); continue }
 
-                const { action, confidence, camera_delta } = prediction
+                const { action: rawAction, confidence, camera_delta, top5 } = prediction
                 this._stepCount++
-                const camStr = camera_delta
-                    ? `  cam=(${camera_delta.dyaw.toFixed(3)}, ${camera_delta.dpitch.toFixed(3)})`
-                    : ''
-                logInfo(this.name, `step=${this._stepCount}  action=${action}  conf=${(confidence * 100).toFixed(1)}%${camStr}`)
+
+                // Umbral de confianza: solo cambiar de acción si supera el threshold
+                let action = rawAction
+                if (this._lastAction && action !== this._lastAction && confidence < ACTION_SWITCH_THRESHOLD) {
+                    logInfo(this.name, `step=${this._stepCount}  pred=${action} (${(confidence * 100).toFixed(1)}%) < ${(ACTION_SWITCH_THRESHOLD * 100)}% → mantiene ${this._lastAction}`)
+                    action = this._lastAction
+                } else {
+                    const camStr = camera_delta
+                        ? `  cam=(${camera_delta.dyaw.toFixed(3)}, ${camera_delta.dpitch.toFixed(3)})`
+                        : ''
+                    logInfo(this.name, `step=${this._stepCount}  action=${action}  conf=${(confidence * 100).toFixed(1)}%${camStr}`)
+                }
+                this._lastAction = action
+
+                // Record inference step
+                if (this._record && this._recordStream) {
+                    const pos  = this.bot.entity.position
+                    const tree = this._getTreeInfo()
+                    const stepNum = String(this._stepCount).padStart(5, '0')
+                    const imgFile = `step_${stepNum}.png`
+                    fs.writeFileSync(
+                        path.join(this._recordDir, 'screenshots', imgFile),
+                        imgBuffer,
+                    )
+                    this._recordStream.write(JSON.stringify({
+                        step:     this._stepCount,
+                        image:    imgFile,
+                        action,
+                        confidence,
+                        camera_delta,
+                        top5,
+                        state: {
+                            x: Math.round(pos.x * 100) / 100,
+                            y: Math.round(pos.y * 100) / 100,
+                            z: Math.round(pos.z * 100) / 100,
+                            yaw:   Math.round(this.bot.entity.yaw * 1000) / 1000,
+                            pitch: Math.round(this.bot.entity.pitch * 1000) / 1000,
+                        },
+                        tree_visible:  tree.tree_visible,
+                        tree_distance: tree.tree_distance,
+                        block_at_cursor: !!this.bot.blockAtCursor(4.5),
+                    }) + '\n')
+                }
 
                 await executeILAction(this.bot, action, camera_delta)
 
@@ -247,10 +335,22 @@ export class ILAgent extends BaseAgent {
 
     // ── Llamada al inference server ───────────────────────────────────────────
 
+    _getTreeInfo() {
+        try {
+            const block = findNearestVisibleBlock(this.bot, this._mcData, 'oak_log', 32)
+            if (!block) return { tree_visible: 0, tree_distance: 0 }
+            const dist = this.bot.entity.position.distanceTo(block.position)
+            return { tree_visible: 1, tree_distance: Math.round(dist * 10) / 10 }
+        } catch (_) {
+            return { tree_visible: 0, tree_distance: 0 }
+        }
+    }
+
     _requestPrediction(pngBuffer) {
         const pos   = this.bot.entity.position
-        const state = [pos.x, pos.y, pos.z, this.bot.entity.yaw, this.bot.entity.pitch]
-            .map(v => v.toFixed(4)).join(',')
+        const tree  = this._getTreeInfo()
+        const state = [pos.x, pos.y, pos.z, this.bot.entity.yaw, this.bot.entity.pitch, tree.tree_visible, tree.tree_distance]
+            .map(v => Number(v).toFixed(4)).join(',')
 
         return new Promise((resolve) => {
             const options = {
@@ -299,6 +399,12 @@ export class ILAgent extends BaseAgent {
 
     async _shutdown() {
         this._running = false
+
+        if (this._recordStream) {
+            await new Promise(r => this._recordStream.end(r))
+            this._recordStream = null
+            logInfo(this.name, `Inference log guardado en: ${this._recordDir}`)
+        }
 
         if (this._browser) {
             try { await this._browser.close() } catch (_) {}

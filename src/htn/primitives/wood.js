@@ -144,7 +144,10 @@ async function chop(bot, mcData, logs = 4) {
     const woodType = await obtainWoodType(bot, mcData);
     console.log(`[Wood.js] Detected biome. Searching for: ${woodType}`);
     bot._datasetRecorder?.setWoodType(woodType)
-    const finalCount = await mineBlock(bot, mcData, woodType, logs);
+    const finalCount = await mineBlock(bot, mcData, woodType, logs, 32, 5, {
+        useFovCone: true,
+        allowUnderground: false
+    });
     return finalCount;
 }
 

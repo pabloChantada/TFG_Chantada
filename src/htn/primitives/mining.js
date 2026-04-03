@@ -84,7 +84,7 @@ async function recoverFromWater(bot, timeout = 6000) {
  */
 
 async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAttempts = 5, opts = {}) {
-    const { useFovCone = true } = opts
+    const { useFovCone = true, allowUnderground = true } = opts
     // Check if the block we want to mine is different from the item we want to obtain (e.g., mining "coal_ore" gives "coal")
     // If not, return the blockName as the itemName
     const itemName = getItemNameFromBlock(blockName)
@@ -126,22 +126,45 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
         } else {
             // No visible ore found — explore to expose new blocks
             console.log(`[mineBlock] No visible ${blockName} found (search ${notFoundCount + 1}, radius ${currentRadius})`)
+            const shouldInterruptExplore = () => {
+                const visible = findNearestVisibleBlock(bot, mcData, blockName, currentRadius, useFovCone)
+                return visible != null
+            }
 
-            // Cycle strategies across attempts instead of failing after 3 misses.
-            // This gives maxAttempts real value and improves recovery in difficult terrain.
-            const strategy = notFoundCount % 4
-            if (strategy === 0) {
-                //zSurface exploration, likely to find cave openings
-                await exploreRandom(bot, 50)
-            } else if (strategy === 1) {
-                // Descend underground where stone/ores are more likely
-                await exploreDown(bot)
-            } else if (strategy === 2) {
-                // Underground lateral exploration
-                await exploreRandom(bot, 40)
+            if (!allowUnderground) {
+                // Wood collection should stay on surface.
+                // Reposition around the area without descending underground.
+                const distances = [50, 35, 20]
+                await exploreRandom(bot, distances[notFoundCount % distances.length], 10000, {
+                    stopWhen: shouldInterruptExplore,
+                    checkInterval: 500
+                })
             } else {
-                // Short local reposition to break pathfinder deadlocks/chunk boundaries
-                await exploreRandom(bot, 20)
+                // Cycle strategies across attempts instead of failing after 3 misses.
+                // This gives maxAttempts real value and improves recovery in difficult terrain.
+                const strategy = notFoundCount % 4
+                if (strategy === 0) {
+                    // Surface exploration, likely to find cave openings
+                    await exploreRandom(bot, 50, 10000, {
+                        stopWhen: shouldInterruptExplore,
+                        checkInterval: 500
+                    })
+                } else if (strategy === 1) {
+                    // Descend underground where stone/ores are more likely
+                    await exploreDown(bot)
+                } else if (strategy === 2) {
+                    // Underground lateral exploration
+                    await exploreRandom(bot, 40, 10000, {
+                        stopWhen: shouldInterruptExplore,
+                        checkInterval: 500
+                    })
+                } else {
+                    // Short local reposition to break pathfinder deadlocks/chunk boundaries
+                    await exploreRandom(bot, 20, 10000, {
+                        stopWhen: shouldInterruptExplore,
+                        checkInterval: 500
+                    })
+                }
             }
 
             notFoundCount++
@@ -188,7 +211,18 @@ async function mine(bot, block) {
             const backupX = blockCenter.x + safeDir.x * 2.5
             const backupZ = blockCenter.z + safeDir.z * 2.5
             try {
-                await bot.pathfinder.goto(new goals.GoalNear(backupX, block.position.y, backupZ, 0.5))
+                const backupTimer = setTimeout(() => {
+                    try { bot.pathfinder.stop() } catch (_) {}
+                }, 5000)
+                const backupPromise = bot.pathfinder.goto(new goals.GoalNear(backupX, block.position.y, backupZ, 0.5))
+                const backupTimeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Backup movement timeout')), 5000)
+                )
+                try {
+                    await Promise.race([backupPromise, backupTimeoutPromise])
+                } finally {
+                    clearTimeout(backupTimer)
+                }
             } catch (e) {
                 console.warn(`[mine] ${botLabel} Backup failed: ${e.message}`)
             }
@@ -208,7 +242,20 @@ async function mine(bot, block) {
 
         const minedPos = currentBlock.position.clone()
         const minedName = currentBlock.name
-        await bot.collectBlock.collect(currentBlock)
+        // Timeout for collectBlock to prevent pathfinder hanging forever
+        const collectTimeout = 30000
+        const collectPromise = bot.collectBlock.collect(currentBlock)
+        const collectTimer = setTimeout(() => {
+            try { bot.pathfinder.stop() } catch (_) {}
+        }, collectTimeout)
+        const collectTimeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('collectBlock timeout')), collectTimeout)
+        )
+        try {
+            await Promise.race([collectPromise, collectTimeoutPromise])
+        } finally {
+            clearTimeout(collectTimer)
+        }
         // Mine the rest of the trunk straight up (non-omniscient: adjacent known positions)
         await mineTreeTrunk(bot, minedName, minedPos)
     } catch (e) {
@@ -233,7 +280,18 @@ async function mineTreeTrunk(bot, woodType, basePos) {
 
     // Step under the trunk column so the upward chopping looks natural
     try {
-        await bot.pathfinder.goto(new goals.GoalNear(basePos.x, basePos.y, basePos.z, 0))
+        const trunkTimer = setTimeout(() => {
+            try { bot.pathfinder.stop() } catch (_) {}
+        }, 5000)
+        const trunkPromise = bot.pathfinder.goto(new goals.GoalNear(basePos.x, basePos.y, basePos.z, 0))
+        const trunkTimeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Trunk positioning timeout')), 5000)
+        )
+        try {
+            await Promise.race([trunkPromise, trunkTimeoutPromise])
+        } finally {
+            clearTimeout(trunkTimer)
+        }
     } catch (_e) { /* continue even if positioning is imperfect */ }
 
     let pos = basePos.offset(0, 1, 0)

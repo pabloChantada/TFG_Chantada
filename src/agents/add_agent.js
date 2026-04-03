@@ -54,6 +54,11 @@ import { logInfo, logError } from './logging.js';
                 description: `Minecraft version`,
                 default: `auto`
             })
+            .option(`record`, {
+                type: `boolean`,
+                description: `Grabar screenshots y log de inferencia (sólo --type il)`,
+                default: false,
+            })
             .help()
             .example(`node src/agents/add_agent.js --name MyBot --type htn`, `Launch HTN agent`)
             .example(`node src/agents/add_agent.js -n TestBot -t htn -mp 25565 -vp 3000`, `Launch with custom ports`)
@@ -96,8 +101,10 @@ import { logInfo, logError } from './logging.js';
 
         // Create and start agent
         logInfo(agentName, `Starting ${agentType.toUpperCase()} agent...`);
-        const agent = new AgentClass(agentName);
-        
+        const agent = (agentType === `il`)
+            ? new AgentClass(agentName, undefined, args.record)
+            : new AgentClass(agentName);
+
         await agent.start(settings, args[`viewer-port`]);
 
     } catch (error) {

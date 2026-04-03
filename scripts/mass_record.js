@@ -2,8 +2,9 @@
  * Grabación masiva de episodios HTN para el dataset de IL.
  *
  * Lanza N episodios del agente HTN secuencialmente. Cada episodio guarda
- * un JSONL en data/recordings/. Al terminar, concatena todos los JSONL
- * en el fichero de salida listo para prepare_dataset.py.
+ * un JSONL en data/recordings/. Al terminar, separa y concatena:
+ *   - episodios exitosos (objetivo cumplido)
+ *   - episodios fallidos/incompletos
  *
  * Uso:
  *   node scripts/mass_record.js --episodes 20
@@ -46,8 +47,18 @@ const args = yargs(hideBin(process.argv))
     })
     .option('output', {
         type: 'string',
-        description: 'Ruta JSONL de salida',
+        description: 'Ruta JSONL principal (por defecto: solo episodios exitosos)',
         default: 'data/train.jsonl'
+    })
+    .option('output-success', {
+        type: 'string',
+        description: 'Ruta JSONL para episodios exitosos',
+        default: 'data/train_success.jsonl'
+    })
+    .option('output-failed', {
+        type: 'string',
+        description: 'Ruta JSONL para episodios fallidos/incompletos',
+        default: 'data/train_failed.jsonl'
     })
     .option('pause', {
         type: 'number',
@@ -152,17 +163,27 @@ function runEpisode(episode, agentName, mcPort, viewerPort) {
     })
 }
 
-/**
- * Concatena todos los ficheros .jsonl de recordingsDir en outputPath.
- * Devuelve el total de líneas escritas.
- */
-function mergeJsonlFiles(recordingsDir, outputPath) {
-    const jsonlFiles = fs.readdirSync(recordingsDir)
+function listRecordingJsonlFiles(recordingsDir) {
+    if (!fs.existsSync(recordingsDir)) return []
+    return fs.readdirSync(recordingsDir)
         .filter(f => f.endsWith('.jsonl'))
         .map(f => path.join(recordingsDir, f))
         .sort()
+}
 
+function diffNewFiles(beforeFiles, afterFiles) {
+    const beforeSet = new Set(beforeFiles)
+    return afterFiles.filter(f => !beforeSet.has(f))
+}
+
+/**
+ * Concatena una lista de ficheros .jsonl en outputPath.
+ * Devuelve el total de líneas escritas.
+ */
+async function mergeJsonlFiles(jsonlFiles, outputPath) {
     if (jsonlFiles.length === 0) return 0
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true })
 
     const out = fs.createWriteStream(outputPath, { flags: 'w' })
     let totalLines = 0
@@ -174,7 +195,11 @@ function mergeJsonlFiles(recordingsDir, outputPath) {
             totalLines++
         }
     }
-    out.end()
+    await new Promise((resolve, reject) => {
+        out.on('error', reject)
+        out.end(resolve)
+    })
+
     return totalLines
 }
 
@@ -186,6 +211,8 @@ async function main() {
     const basePort       = args['base-port']
     const recordingsDir  = args['recordings-dir']
     const outputJsonl    = args.output
+    const outputSuccess  = args['output-success']
+    const outputFailed   = args['output-failed']
     const pauseSec       = args.pause
     const serverDir      = path.resolve(args['server-dir'])
     const manageServer   = !args['no-server']
@@ -198,6 +225,8 @@ async function main() {
     console.log(`║  Servidor:     ${(manageServer ? serverDir : 'externo').padEnd(35)}║`)
     console.log(`║  Recordings:   ${recordingsDir.padEnd(35)}║`)
     console.log(`║  Salida:       ${outputJsonl.padEnd(35)}║`)
+    console.log(`║  Éxitos:       ${outputSuccess.padEnd(35)}║`)
+    console.log(`║  Fallidos:     ${outputFailed.padEnd(35)}║`)
     console.log('╚══════════════════════════════════════════════════╝\n')
 
     if (manageServer) {
@@ -236,6 +265,8 @@ async function main() {
 
     // ── Grabar episodios ──────────────────────────────────────────────
     const results = []
+    const successFiles = []
+    const failedFiles = []
     for (let ep = startEp; ep < startEp + episodes; ep++) {
         let episodeMcPort = mcPort
 
@@ -259,9 +290,16 @@ async function main() {
             }
         }
 
+        const beforeFiles = listRecordingJsonlFiles(recordingsDir)
         const agentName = generateAgentName(ep)
         const result = await runEpisode(ep, agentName, episodeMcPort, basePort)
-        results.push(result)
+        const afterFiles = listRecordingJsonlFiles(recordingsDir)
+        const newFiles = diffNewFiles(beforeFiles, afterFiles)
+
+        if (result.success) successFiles.push(...newFiles)
+        else failedFiles.push(...newFiles)
+
+        results.push({ ...result, jsonlFiles: newFiles })
 
         // Parar servidor
         if (manageServer && currentServer) {
@@ -296,13 +334,24 @@ async function main() {
     console.log('COMBINANDO GRABACIONES...')
     console.log('─'.repeat(60))
 
-    const totalLines = mergeJsonlFiles(recordingsDir, outputJsonl)
-    if (totalLines === 0) {
-        console.error(`No se encontraron JSONL en ${recordingsDir}.`)
+    const totalSuccessLines = await mergeJsonlFiles(successFiles, outputSuccess)
+    const totalFailedLines = await mergeJsonlFiles(failedFiles, outputFailed)
+
+    if (totalSuccessLines === 0) {
+        console.error('No se generaron episodios exitosos con frames.')
         process.exit(1)
     }
 
-    console.log(`\nDataset combinado: ${outputJsonl}  (${totalLines} frames)`)
+    // Mantener compatibilidad: output principal = solo episodios exitosos
+    const outputMainPath = path.resolve(outputJsonl)
+    const outputSuccessPath = path.resolve(outputSuccess)
+    if (outputMainPath !== outputSuccessPath) {
+        fs.copyFileSync(outputSuccess, outputJsonl)
+    }
+
+    console.log(`\nDataset principal (éxitos): ${outputJsonl}  (${totalSuccessLines} frames)`)
+    console.log(`Dataset éxitos:              ${outputSuccess}  (${totalSuccessLines} frames)`)
+    console.log(`Dataset fallidos:            ${outputFailed}  (${totalFailedLines} frames)`)
     console.log('\nPara limpiar y preparar el dataset antes de entrenar:')
     console.log(`  python scripts/prepare_dataset.py --input ${outputJsonl} --output data/train_clean.jsonl`)
 }

@@ -20,7 +20,13 @@ def plot_confusion_matrix(extractor, model, val_loader, dataset, device, normali
 
     print("Calculando confusion matrix...")
     with torch.no_grad():
-        for imgs, states, labels in tqdm(val_loader, desc="Eval"):
+        for batch in tqdm(val_loader, desc="Eval"):
+            # Compatibilidad: algunos loaders devuelven 3 items (imgs, states, labels)
+            # y otros 4 (imgs, states, labels, camera_targets).
+            if len(batch) < 3:
+                raise ValueError(f"Batch inválido en val_loader: esperado >=3 elementos, recibido {len(batch)}")
+
+            imgs, states, labels = batch[0], batch[1], batch[2]
             imgs, states, labels = imgs.to(device), states.to(device), labels.to(device)
             B, T, C, H, W = imgs.shape
             features = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)

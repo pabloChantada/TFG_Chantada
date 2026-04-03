@@ -222,8 +222,11 @@ class DatasetRecorder {
      * Se graba siempre, independientemente de la acción discreta.
      */
     _getCameraDelta() {
-        const dyaw   = this.bot.entity.yaw   - this._prevYaw
-        const dpitch = this.bot.entity.pitch - this._prevPitch
+        let dyaw   = this.bot.entity.yaw   - this._prevYaw
+        let dpitch = this.bot.entity.pitch - this._prevPitch
+        // Normalizar yaw delta a [-π, π] para evitar saltos por wrapping
+        while (dyaw >  Math.PI) dyaw -= 2 * Math.PI
+        while (dyaw < -Math.PI) dyaw += 2 * Math.PI
         return {
             dyaw:   Math.round(dyaw   * 10000) / 10000,
             dpitch: Math.round(dpitch * 10000) / 10000,
@@ -239,9 +242,9 @@ class DatasetRecorder {
     _detectAction() {
         const cs = this.bot.controlState
 
-        // Movimiento (control states persistentes)
-        if (cs.forward && cs.sprint) return 'move_forward_sprint'
-        if (cs.forward)              return 'move_forward_walk'
+        // Jump + forward primero (pathfinding sube bloques)
+        if (cs.forward && cs.jump)   return 'move_forward_jump'
+        if (cs.forward)              return 'move_forward_sprint'
         if (cs.back)                 return 'move_backward_walk'
         if (cs.left)                 return 'move_left'
         if (cs.right)                return 'move_right'

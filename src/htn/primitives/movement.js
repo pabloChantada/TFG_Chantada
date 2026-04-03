@@ -25,11 +25,18 @@ async function moveToBlock(bot, block, range = 3, timeout = null) {
     try {
         // Create a promise that rejects on timeout
         const movePromise = bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, range))
+        const timeoutId = setTimeout(() => {
+            try { bot.pathfinder.stop() } catch (_) {}
+        }, effectiveTimeout)
         const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Movement timeout')), effectiveTimeout)
         )
         
-        await Promise.race([movePromise, timeoutPromise])
+        try {
+            await Promise.race([movePromise, timeoutPromise])
+        } finally {
+            clearTimeout(timeoutId)
+        }
     } catch (e) {
         const movedDistance = startPos.distanceTo(bot.entity.position)
         const elapsed = Date.now() - startTime
@@ -51,9 +58,13 @@ async function moveToBlock(bot, block, range = 3, timeout = null) {
  * @param {Bot} bot - The mineflayer bot instance.
  * @param {number} distance - The distance to explore in a random direction (default is 30).
  * @param {number} timeout - Maximum time for exploration in ms (default 10000ms).
+ * @param {Object} opts - Optional behavior settings.
+ * @param {Function|null} opts.stopWhen - Predicate checked periodically; if true, exploration is interrupted.
+ * @param {number} opts.checkInterval - Interval in ms for stopWhen checks (default 500ms).
  * @returns {Promise<void>}
  */
-async function exploreRandom(bot, distance = 30, timeout = 10000) {
+async function exploreRandom(bot, distance = 30, timeout = 10000, opts = {}) {
+    const { stopWhen = null, checkInterval = 500 } = opts
     const angle = Math.random() * 2 * Math.PI
     const dx = Math.cos(angle) * distance
     const dz = Math.sin(angle) * distance
@@ -62,11 +73,37 @@ async function exploreRandom(bot, distance = 30, timeout = 10000) {
     
     try {
         const movePromise = bot.pathfinder.goto(new goals.GoalNear(target.x, target.y, target.z, 5))
+        const stopId = setTimeout(() => {
+            try { bot.pathfinder.stop() } catch (_) {}
+        }, timeout)
         const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Exploration timeout')), timeout)
         )
+        let interruptInterval = null
+        const interruptPromise = new Promise((resolve) => {
+            if (typeof stopWhen !== 'function') return
+            interruptInterval = setInterval(() => {
+                try {
+                    if (stopWhen()) {
+                        try { bot.pathfinder.stop() } catch (_) {}
+                        resolve('interrupted')
+                    }
+                } catch (_e) {
+                    // Ignore predicate errors and keep exploring
+                }
+            }, checkInterval)
+            interruptInterval.unref?.()
+        })
         
-        await Promise.race([movePromise, timeoutPromise])
+        try {
+            const result = await Promise.race([movePromise, timeoutPromise, interruptPromise])
+            if (result === 'interrupted') {
+                console.log('[exploreRandom] Interrupted: target found during exploration')
+            }
+        } finally {
+            clearTimeout(stopId)
+            if (interruptInterval) clearInterval(interruptInterval)
+        }
     } catch (e) {
         const movedDistance = startPos.distanceTo(bot.entity.position)
         
@@ -119,11 +156,18 @@ async function exploreDown(bot, targetY = 16, timeout = 30000) {
                 Math.floor(fromPos.z),
                 3
             ))
+            const stopId = setTimeout(() => {
+                try { bot.pathfinder.stop() } catch (_) {}
+            }, perStageTimeout)
             const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error(`Stage timeout to Y=${yTarget}`)), perStageTimeout)
             )
 
-            await Promise.race([movePromise, timeoutPromise])
+            try {
+                await Promise.race([movePromise, timeoutPromise])
+            } finally {
+                clearTimeout(stopId)
+            }
             console.log(`[exploreDown] Reached stage Y=${Math.floor(bot.entity.position.y)} (target ${yTarget})`)
         }
 

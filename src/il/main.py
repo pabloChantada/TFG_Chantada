@@ -12,6 +12,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from plots import *
 from load_dataset import MinecraftDataset, MIRROR_PAIRS
 from model import RNNExtractor, MinecraftILModel
+from model_convlstm import MinecraftConvLSTMModel
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
@@ -54,6 +55,9 @@ def parse_args():
                         help='Tamaño del estado oculto del GRU extractor')
     parser.add_argument('--min-samples', type=int,   default=0,
                         help='Eliminar clases con menos de N muestras (default: 0 = desactivado)')
+    parser.add_argument('--model',       type=str,   default='rnn',
+                        choices=['rnn', 'convlstm'],
+                        help='Arquitectura del modelo: rnn (GRU+LSTM) o convlstm (CNN+ConvLSTM)')
     return parser.parse_args()
 
 
@@ -64,8 +68,9 @@ def get_run_dir(run_timestamp):
     return run_dir
 
 
-def save_run_config(run_dir, hidden_size, feat_dim, num_actions):
+def save_run_config(run_dir, model_type, hidden_size, feat_dim, num_actions):
     config = {
+        "model_type":  model_type,
         "img_size":    IMG_SIZE,
         "hidden_size": hidden_size,
         "feat_dim":    feat_dim,
@@ -87,10 +92,10 @@ def print_run_summary(args, run_timestamp, extractor, model, dataset,
     SEP2 = "-" * 56
 
     id2pair      = {v: k for k, v in dataset.pair2id.items()}
-    trainable    = (sum(p.numel() for p in extractor.parameters() if p.requires_grad) +
-                    sum(p.numel() for p in model.parameters()     if p.requires_grad))
-    total_params = (sum(p.numel() for p in extractor.parameters()) +
-                    sum(p.numel() for p in model.parameters()))
+    ext_trainable = sum(p.numel() for p in extractor.parameters() if p.requires_grad) if extractor else 0
+    ext_total     = sum(p.numel() for p in extractor.parameters()) if extractor else 0
+    trainable    = ext_trainable + sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = ext_total     + sum(p.numel() for p in model.parameters())
     label_counts = Counter(d["label"] for d in dataset.data)
 
     active_pairs = [(a, b) for a, b in MIRROR_PAIRS
@@ -128,11 +133,17 @@ def print_run_summary(args, run_timestamp, extractor, model, dataset,
     print(f"  {SEP2}")
     print(f"  MODELO")
     print(f"  {SEP2}")
-    print(f"  Extractor    : RNNExtractor(img_size={IMG_SIZE}, hidden={extractor.feat_dim})")
-    print(f"  state_proj   : Linear({STATE_DIM} → {extractor.feat_dim})")
-    print(f"  LSTM         : ({extractor.feat_dim} → {model.lstm_hidden})")
-    print(f"  action_head  : Dropout(0.5) → Linear({model.lstm_hidden} → {len(id2pair)})")
-    print(f"  camera_head  : Dropout(0.3) → Linear({model.lstm_hidden} → {model.camera_dim}) → Tanh")
+    if extractor is not None:
+        print(f"  Extractor    : RNNExtractor(img_size={IMG_SIZE}, hidden={extractor.feat_dim})")
+        print(f"  state_proj   : Linear({STATE_DIM} → {extractor.feat_dim})")
+        print(f"  LSTM         : ({extractor.feat_dim} → {model.lstm_hidden})")
+        print(f"  action_head  : Dropout(0.5) → Linear({model.lstm_hidden} → {len(id2pair)})")
+        print(f"  camera_head  : Dropout(0.3) → Linear({model.lstm_hidden} → {model.camera_dim}) → Tanh")
+    else:
+        print(f"  Arquitectura : ConvLSTM (CNN + ConvLSTMCell)")
+        print(f"  CNN channels : {model.cnn_channels}")
+        print(f"  ConvLSTM h   : {model.hidden_channels}")
+        print(f"  state_dim    : {model.state_dim}")
     print(f"  Parámetros   : {trainable:,} entrenables / {total_params:,} total")
     print()
 
@@ -166,7 +177,8 @@ def print_run_summary(args, run_timestamp, extractor, model, dataset,
 
 def train_epoch(extractor, model, loader, criterion, camera_criterion,
                 device, camera_loss_weight=1.0, optimizer=None, is_training=True):
-    extractor.train() if is_training else extractor.eval()
+    if extractor is not None:
+        extractor.train() if is_training else extractor.eval()
     model.train()     if is_training else model.eval()
     total_loss, total_action_loss, total_camera_loss = 0, 0, 0
     correct, total = 0, 0
@@ -181,8 +193,11 @@ def train_epoch(extractor, model, loader, criterion, camera_criterion,
         if is_training:
             optimizer.zero_grad()
 
-        features = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
-        logits, camera_pred = model(features, states)
+        if extractor is not None:
+            features = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
+            logits, camera_pred = model(features, states)
+        else:
+            logits, camera_pred = model(imgs, states)
 
         # Loss acción discreta
         logits_flat = logits.reshape(B * T, -1)
@@ -249,10 +264,10 @@ def train(extractor, model, dataset, train_loader, val_loader, optimizer, schedu
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save({
-                'extractor': extractor.state_dict(),
-                'model':     model.state_dict(),
-            }, model_path)
+            checkpoint = {'model': model.state_dict()}
+            if extractor is not None:
+                checkpoint['extractor'] = extractor.state_dict()
+            torch.save(checkpoint, model_path)
             pair2id_path = os.path.splitext(model_path)[0] + "_pair2id.json"
             with open(pair2id_path, "w") as f:
                 json.dump(dataset.pair2id, f, indent=2)
@@ -284,9 +299,10 @@ if __name__ == "__main__":
 
     HIDDEN_SIZE       = args.hidden_size
     WEIGHT_DECAY      = 1e-2
-    PATIENCE          = 6
+    PATIENCE          = 5
     CAMERA_LOSS_WEIGHT = 1.0
-
+    SPLIT_RATIO       = 0.6
+    
     model_path = os.path.join(run_dir, f"model_rnn_{run_timestamp}.pth")
 
     if not os.path.exists(args.dataset):
@@ -298,19 +314,29 @@ if __name__ == "__main__":
     dataset = MinecraftDataset(jsonl_path=args.dataset)
     if args.min_samples > 0:
         dataset.filter_min_samples(args.min_samples)
-    train_loader, val_loader = dataset.load_dataset()
+    train_loader, val_loader = dataset.load_dataset(split_ratio=SPLIT_RATIO, seed=42)
     num_actions = len(dataset.pair2id)
 
-    extractor = RNNExtractor(img_width=IMG_SIZE, hidden_size=HIDDEN_SIZE).to(device)
-    model     = MinecraftILModel(
-        num_actions=num_actions,
-        feat_dim=extractor.feat_dim,
-        state_dim=STATE_DIM,
-        lstm_hidden=LSTM_HIDDEN,
-        camera_dim=CAMERA_DIM,
-    ).to(device)
+    if args.model == 'convlstm':
+        extractor = None
+        model = MinecraftConvLSTMModel(
+            num_actions=num_actions,
+            state_dim=STATE_DIM,
+            camera_dim=CAMERA_DIM,
+        ).to(device)
+        model_path = os.path.join(run_dir, f"model_convlstm_{run_timestamp}.pth")
+    else:
+        extractor = RNNExtractor(img_width=IMG_SIZE, hidden_size=HIDDEN_SIZE).to(device)
+        model = MinecraftILModel(
+            num_actions=num_actions,
+            feat_dim=extractor.feat_dim,
+            state_dim=STATE_DIM,
+            lstm_hidden=LSTM_HIDDEN,
+            camera_dim=CAMERA_DIM,
+        ).to(device)
 
-    save_run_config(run_dir, HIDDEN_SIZE, extractor.feat_dim, num_actions)
+    save_run_config(run_dir, args.model, HIDDEN_SIZE,
+                    extractor.feat_dim if extractor else 0, num_actions)
 
     all_labels    = [d['label'] for d in dataset.data]
     present       = np.unique(all_labels)
@@ -323,10 +349,15 @@ if __name__ == "__main__":
 
     criterion        = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.001)
     camera_criterion = nn.MSELoss()
+    if extractor is not None:
+        trainable_params = (
+            list(filter(lambda p: p.requires_grad, extractor.parameters())) +
+            list(model.parameters())
+        )
+    else:
+        trainable_params = list(model.parameters())
     optimizer = torch.optim.AdamW(
-        list(filter(lambda p: p.requires_grad, extractor.parameters())) +
-        list(model.parameters()),
-        lr=args.lr, weight_decay=WEIGHT_DECAY,
+        trainable_params, lr=args.lr, weight_decay=WEIGHT_DECAY,
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', patience=2, factor=0.5, min_lr=1e-6,

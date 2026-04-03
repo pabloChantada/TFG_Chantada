@@ -11,15 +11,61 @@ const LOG_COUNT = 5
 /**
  * Setup pathfinder with standard HTN settings
  */
-function setupPathfinder(bot, mcData) {
+function setupPathfinder(bot, mcData, options = {}) {
+    const { canDig = true } = options
     const defaultMove = new Movements(bot, mcData)
-    defaultMove.canDig = true
+    defaultMove.canDig = canDig
     defaultMove.dontMineUnderFallingBlock = false 
     bot.pathfinder.setMovements(defaultMove)
     
     // Limit pathfinder computation to prevent event loop blocking (keepalive timeout)
     bot.pathfinder.thinkTimeout = 2000  // Max 2s to compute a path before giving up
     bot.pathfinder.tickTimeout = 15     // Max ms per tick for path computation
+
+    // ── Stuck-detection watchdog ────────────────────────────────────
+    // Every STUCK_CHECK_INTERVAL ms we sample the bot's position.
+    // If the bot hasn't moved more than STUCK_THRESHOLD blocks in
+    // STUCK_MAX_SAMPLES consecutive checks while the pathfinder is
+    // active, force-stop the pathfinder so the higher-level retry
+    // logic can kick in.
+    const STUCK_CHECK_INTERVAL = 3000   // ms between samples
+    const STUCK_THRESHOLD      = 1.5    // blocks
+    const STUCK_MAX_SAMPLES    = 4      // consecutive stale samples → stuck
+    let lastPos = null
+    let staleCount = 0
+
+    const watchdog = setInterval(() => {
+        if (!bot.entity) return
+        const pos = bot.entity.position
+
+        // Only check when pathfinder is actively moving
+        const isPathfinding = bot.pathfinder.isMoving?.() ?? 
+                              (bot.pathfinder.goal != null)
+        if (!isPathfinding) {
+            lastPos = null
+            staleCount = 0
+            return
+        }
+
+        if (lastPos) {
+            const dist = pos.distanceTo(lastPos)
+            if (dist < STUCK_THRESHOLD) {
+                staleCount++
+                if (staleCount >= STUCK_MAX_SAMPLES) {
+                    console.warn(`[Watchdog] Bot stuck (${staleCount} checks, moved ${dist.toFixed(2)} blocks). Forcing pathfinder stop.`)
+                    try { bot.pathfinder.stop() } catch (_) {}
+                    staleCount = 0
+                }
+            } else {
+                staleCount = 0
+            }
+        }
+        lastPos = pos.clone()
+    }, STUCK_CHECK_INTERVAL)
+    watchdog.unref?.()
+
+    // Clean up watchdog when bot disconnects
+    bot.once('end', () => clearInterval(watchdog))
 }
 
 /**
@@ -29,7 +75,7 @@ function setupPathfinder(bot, mcData) {
  */
 export async function startHTN(bot) {
     mcData = minecraftData(bot.version)
-    setupPathfinder(bot, mcData)
+    setupPathfinder(bot, mcData, { canDig: true })
     return await startFullProgression(bot, mcData)
 }
 
@@ -41,7 +87,7 @@ export async function startHTN(bot) {
  */
 export async function startChopTrees(bot, logCount = LOG_COUNT) {
     mcData = minecraftData(bot.version)
-    setupPathfinder(bot, mcData)
+    setupPathfinder(bot, mcData, { canDig: false })
     const viewerPort = parseInt(process.env.VIEWER_PORT || '3000', 10)
     await setupRecorder(bot, mcData, viewerPort)
     return await startChopProgression(bot, mcData, logCount)

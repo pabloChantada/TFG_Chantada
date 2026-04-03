@@ -11,7 +11,7 @@ import math
 # La cámara se predice como valores continuos (dyaw, dpitch) en una cabeza
 # de regresión separada, no como acciones discretas.
 ACTIONS = [
-    "move_forward_walk",
+    "move_forward_jump",
     "move_forward_sprint",
     "move_backward_walk",
     "move_left",
@@ -25,10 +25,13 @@ ACTIONS = [
 # Dimensión de la salida continua de cámara (dyaw, dpitch en radianes)
 CAMERA_DIM = 2
 
-# Bounds para normalización del camera_delta a [-1, 1]
+# Bounds para normalización del camera_delta a [-1, 1].
+# Rango estrecho (~±57°): los deltas reales son mayoritariamente < 0.3 rad;
+# outliers > 1 rad son artefactos del pathfinding (giros bruscos del HTN)
+# que no queremos que el modelo reproduzca.
 CAMERA_BOUNDS = {
-    "dyaw":   (-math.pi, math.pi),
-    "dpitch": (-math.pi / 2, math.pi / 2),
+    "dyaw":   (-1.0, 1.0),
+    "dpitch": (-1.0, 1.0),
 }
 
 # Longitud de la ventana temporal (nº de frames por secuencia)
