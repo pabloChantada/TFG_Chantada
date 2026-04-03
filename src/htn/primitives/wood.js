@@ -5,6 +5,7 @@ import { findNearestVisibleBlock } from './blocks.js';
 // Some other types may be needed, for now we use these
 const biomeToWoodType = {
     'forest': 'oak_log',
+    'plains': 'oak_log',
     'birch_forest': 'birch_log',
     'dark_forest': 'dark_oak_log',
     'jungle': 'jungle_log',
@@ -60,7 +61,6 @@ const plankToLog = Object.fromEntries(
  * @returns {Promise<string>} - The wood type to use (e.g., "oak_log").
  */
 async function obtainWoodType(bot, mcData) {
-    bot._datasetRecorder?.setIntent('search_tree')
     // Obtain biome name and map to wood type
     const biome = getBiomeName(bot, mcData);
     let woodType = biomeToWoodType[biome];

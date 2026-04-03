@@ -9,7 +9,6 @@
  *   5. Repite
  *
  * Requisito: inference server corriendo antes de iniciar el agente.
- *   python src/il/inference_server.py --model <modelo>.pth
  */
 
 import http from 'http'
@@ -50,14 +49,14 @@ async function releaseAll(bot) {
 // ── Ejecución de acciones ─────────────────────────────────────────────────────
 
 /**
- * Ejecuta una acción discreta del espacio de acciones de constants.py.
+ * Ejecuta una acción discreta + delta de cámara continuo.
  *
- * Acciones: move_forward_walk, move_forward_sprint, move_backward_walk,
- *   move_left, move_right, jump, sneak,
- *   camera_yaw_p15/m15/p45/m45, camera_pitch_p15/m15/p45/m45,
- *   attack, equip_wooden_axe
+ * Acciones discretas: move_forward_walk, move_forward_sprint, move_backward_walk,
+ *   move_left, move_right, jump, sneak, attack, equip_wooden_axe
+ *
+ * Camera delta: {dyaw, dpitch} en radianes, aplicado siempre tras la acción.
  */
-async function executeILAction(bot, action) {
+async function executeILAction(bot, action, cameraDelta = null) {
     await releaseAll(bot)
 
     switch (action) {
@@ -107,33 +106,6 @@ async function executeILAction(bot, action) {
             bot.setControlState('sneak', false)
             break
 
-        // ── Cámara ────────────────────────────────────────────────────────────
-
-        case 'camera_yaw_p15':
-            await bot.look(bot.entity.yaw + 15 * DEG_TO_RAD, bot.entity.pitch, false)
-            break
-        case 'camera_yaw_m15':
-            await bot.look(bot.entity.yaw - 15 * DEG_TO_RAD, bot.entity.pitch, false)
-            break
-        case 'camera_yaw_p45':
-            await bot.look(bot.entity.yaw + 45 * DEG_TO_RAD, bot.entity.pitch, false)
-            break
-        case 'camera_yaw_m45':
-            await bot.look(bot.entity.yaw - 45 * DEG_TO_RAD, bot.entity.pitch, false)
-            break
-        case 'camera_pitch_p15':
-            await bot.look(bot.entity.yaw, clampPitch(bot.entity.pitch + 15 * DEG_TO_RAD), false)
-            break
-        case 'camera_pitch_m15':
-            await bot.look(bot.entity.yaw, clampPitch(bot.entity.pitch - 15 * DEG_TO_RAD), false)
-            break
-        case 'camera_pitch_p45':
-            await bot.look(bot.entity.yaw, clampPitch(bot.entity.pitch + 45 * DEG_TO_RAD), false)
-            break
-        case 'camera_pitch_m45':
-            await bot.look(bot.entity.yaw, clampPitch(bot.entity.pitch - 45 * DEG_TO_RAD), false)
-            break
-
         // ── Ataque → primitiva HTN: minar bloque en cursor ───────────────────
 
         case 'attack': {
@@ -156,6 +128,16 @@ async function executeILAction(bot, action) {
 
         default:
             logError('ILAgent', new Error(`Acción desconocida: "${action}"`))
+    }
+
+    // ── Aplicar delta de cámara continuo (siempre, tras la acción) ────────
+    if (cameraDelta) {
+        const { dyaw, dpitch } = cameraDelta
+        await bot.look(
+            bot.entity.yaw + dyaw,
+            clampPitch(bot.entity.pitch + dpitch),
+            false,
+        )
     }
 }
 
@@ -230,11 +212,14 @@ export class ILAgent extends BaseAgent {
                 const prediction = await this._requestPrediction(imgBuffer)
                 if (!prediction) { await sleep(STEP_INTERVAL_MS); continue }
 
-                const { action, confidence } = prediction
+                const { action, confidence, camera_delta } = prediction
                 this._stepCount++
-                logInfo(this.name, `step=${this._stepCount}  action=${action}  conf=${(confidence * 100).toFixed(1)}%`)
+                const camStr = camera_delta
+                    ? `  cam=(${camera_delta.dyaw.toFixed(3)}, ${camera_delta.dpitch.toFixed(3)})`
+                    : ''
+                logInfo(this.name, `step=${this._stepCount}  action=${action}  conf=${(confidence * 100).toFixed(1)}%${camStr}`)
 
-                await executeILAction(this.bot, action)
+                await executeILAction(this.bot, action, camera_delta)
 
                 const remaining = STEP_INTERVAL_MS - (Date.now() - t0)
                 if (remaining > 0) await sleep(remaining)

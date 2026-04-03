@@ -36,8 +36,32 @@ function getItemNameFromBlock(blockName) {
  * @return {string} - The name of the biome.
  */
 function getBiomeName(bot, mcData) {
-    const biomeId = bot.world.getBiome(bot.entity.position);
-    return mcData.biomes[biomeId]?.name || 'plains';
+    const normalizeBiomeName = (name) => {
+        if (typeof name !== 'string' || name.length === 0) return null
+        return name.startsWith('minecraft:') ? name.slice('minecraft:'.length) : name
+    }
+
+    const biomeValue = bot.world.getBiome(bot.entity.position)
+
+    // mineflayer/prismarine puede devolver:
+    //  - número (id del bioma)
+    //  - objeto { id, name, ... }
+    if (typeof biomeValue === 'number') {
+        const biomeName = mcData.biomes[biomeValue]?.name
+        return normalizeBiomeName(biomeName) || 'plains'
+    }
+
+    if (biomeValue && typeof biomeValue === 'object') {
+        if (typeof biomeValue.name === 'string' && biomeValue.name.length > 0) {
+            return normalizeBiomeName(biomeValue.name) || 'plains'
+        }
+        if (typeof biomeValue.id === 'number') {
+            const biomeName = mcData.biomes[biomeValue.id]?.name
+            return normalizeBiomeName(biomeName) || 'plains'
+        }
+    }
+
+    return 'plains'
 }
 
 export {

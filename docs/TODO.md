@@ -58,3 +58,10 @@
 ## Notas Técnicas
 - Mundo de cuevas multiagente: maximizar minería de ores con exploración coordinada. 
   - Mundo de cuevas -> varios agentes -> maximizar la mineria de ores
+
+
+--- 
+
+# Notas
+
+- La exploracion es prioritaria hasta que termina, es decir se mueve X tiempo, y luego vuelve a talar

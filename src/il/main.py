@@ -1,24 +1,23 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 import sys
 import json
-from plots import *
-from load_dataset import MinecraftDataset, MIRROR_PAIRS
-from model import ResNetExtractor, MinecraftILModel
 import os
-from PIL import Image
 import argparse
 from datetime import datetime
 from collections import Counter
 from sklearn.utils.class_weight import compute_class_weight
 
+from plots import *
+from load_dataset import MinecraftDataset, MIRROR_PAIRS
+from model import RNNExtractor, MinecraftILModel
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from constants import SEQ_LEN, STATE_DIM
+from constants import SEQ_LEN, STATE_DIM, IMG_SIZE, CAMERA_DIM
 
 LSTM_HIDDEN = 256
 
@@ -47,15 +46,14 @@ class TeeLogger:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Minecraft IL: Train o Inference")
-    parser.add_argument('--mode',     choices=['train', 'eval', 'inference'], default='train')
-    parser.add_argument('--dataset',  type=str, default='data/train.jsonl')
-    parser.add_argument('--model',    type=str, default='src/il/models/minecraft_model.pth')
-    parser.add_argument('--epochs',   type=int, default=30)
-    parser.add_argument('--lr',       type=float, default=1e-4)
-    parser.add_argument('--backbone', type=str, default='resnet18',
-                        choices=['resnet18', 'resnet34', 'resnet50', 'resnet101'])
-    parser.add_argument('--image',    type=str, help='Imagen para inferencia única')
+    parser = argparse.ArgumentParser(description="Minecraft IL: Train")
+    parser.add_argument('--dataset',     type=str,   default='data/train.jsonl')
+    parser.add_argument('--epochs',      type=int,   default=30)
+    parser.add_argument('--lr',          type=float, default=1e-4)
+    parser.add_argument('--hidden-size', type=int,   default=512,
+                        help='Tamaño del estado oculto del GRU extractor')
+    parser.add_argument('--min-samples', type=int,   default=0,
+                        help='Eliminar clases con menos de N muestras (default: 0 = desactivado)')
     return parser.parse_args()
 
 
@@ -66,19 +64,15 @@ def get_run_dir(run_timestamp):
     return run_dir
 
 
-def get_model_plots_dir(run_dir):
-    plots_dir = os.path.join(run_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
-    return plots_dir
-
-
-def save_run_config(run_dir, backbone, feat_dim, num_actions):
+def save_run_config(run_dir, hidden_size, feat_dim, num_actions):
     config = {
-        "backbone":    backbone,
+        "img_size":    IMG_SIZE,
+        "hidden_size": hidden_size,
         "feat_dim":    feat_dim,
         "state_dim":   STATE_DIM,
         "lstm_hidden": LSTM_HIDDEN,
         "num_actions": num_actions,
+        "camera_dim":  CAMERA_DIM,
         "seq_len":     SEQ_LEN,
     }
     with open(os.path.join(run_dir, "config.json"), "w") as f:
@@ -86,9 +80,9 @@ def save_run_config(run_dir, backbone, feat_dim, num_actions):
     return config
 
 
-def write_run_summary(args, run_timestamp, extractor, model, dataset,
+def print_run_summary(args, run_timestamp, extractor, model, dataset,
                       train_loader, val_loader, class_weights, criterion,
-                      optimizer, scheduler, weight_decay, patience, device):
+                      weight_decay, patience, device, camera_loss_weight=1.0):
     SEP  = "=" * 56
     SEP2 = "-" * 56
 
@@ -99,28 +93,17 @@ def write_run_summary(args, run_timestamp, extractor, model, dataset,
                     sum(p.numel() for p in model.parameters()))
     label_counts = Counter(d["label"] for d in dataset.data)
 
-    frozen, unfrozen = [], []
-    for name, param in extractor.net.named_parameters():
-        layer = name.split(".")[0]
-        (unfrozen if param.requires_grad else frozen).append(layer)
-    frozen_layers   = sorted(set(frozen))
-    unfrozen_layers = sorted(set(unfrozen))
-
     active_pairs = [(a, b) for a, b in MIRROR_PAIRS
                     if a in dataset.pair2id and b in dataset.pair2id]
 
-    train_sessions, val_sessions = set(), set()
-    for item in train_loader.dataset.data:
-        train_sessions.add(item["session_id"])
-    for item in val_loader.dataset.data:
-        val_sessions.add(item["session_id"])
+    train_sessions = {item["session_id"] for item in train_loader.dataset.data}
+    val_sessions   = {item["session_id"] for item in val_loader.dataset.data}
 
     print(SEP)
     print("  RUN SUMMARY")
     print(SEP)
     print(f"  Run ID     : {run_timestamp}")
     print(f"  Fecha      : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Modo       : {args.mode}")
     print(f"  Dispositivo: {device}")
     print()
 
@@ -145,12 +128,11 @@ def write_run_summary(args, run_timestamp, extractor, model, dataset,
     print(f"  {SEP2}")
     print(f"  MODELO")
     print(f"  {SEP2}")
-    print(f"  Extractor    : {extractor.backbone_name}  (feat_dim={extractor.feat_dim})")
-    print(f"  Capas frozen : {', '.join(frozen_layers)}")
-    print(f"  Capas libres : {', '.join(unfrozen_layers)}")
+    print(f"  Extractor    : RNNExtractor(img_size={IMG_SIZE}, hidden={extractor.feat_dim})")
     print(f"  state_proj   : Linear({STATE_DIM} → {extractor.feat_dim})")
     print(f"  LSTM         : ({extractor.feat_dim} → {model.lstm_hidden})")
-    print(f"  Head         : Dropout(0.5) → Linear({model.lstm_hidden} → {len(id2pair)})")
+    print(f"  action_head  : Dropout(0.5) → Linear({model.lstm_hidden} → {len(id2pair)})")
+    print(f"  camera_head  : Dropout(0.3) → Linear({model.lstm_hidden} → {model.camera_dim}) → Tanh")
     print(f"  Parámetros   : {trainable:,} entrenables / {total_params:,} total")
     print()
 
@@ -163,7 +145,9 @@ def write_run_summary(args, run_timestamp, extractor, model, dataset,
     print(f"  Batch size   : {train_loader.batch_size}")
     print(f"  Patience     : {patience}")
     ls = getattr(criterion, "label_smoothing", 0)
-    print(f"  Loss         : CrossEntropyLoss(label_smoothing={ls}, class_weights=balanced)")
+    print(f"  Loss action  : CrossEntropyLoss(label_smoothing={ls}, class_weights=balanced)")
+    print(f"  Loss camera  : MSELoss")
+    print(f"  Camera weight: {camera_loss_weight}")
     print(f"  Optimizer    : AdamW")
     print(f"  Scheduler    : ReduceLROnPlateau(patience=2, factor=0.5, min_lr=1e-6)")
     print()
@@ -180,66 +164,87 @@ def write_run_summary(args, run_timestamp, extractor, model, dataset,
     print()
 
 
-def train_epoch(extractor, model, loader, criterion, device, optimizer=None, is_training=True):
+def train_epoch(extractor, model, loader, criterion, camera_criterion,
+                device, camera_loss_weight=1.0, optimizer=None, is_training=True):
     extractor.train() if is_training else extractor.eval()
     model.train()     if is_training else model.eval()
-    total_loss, correct, total = 0, 0, 0
+    total_loss, total_action_loss, total_camera_loss = 0, 0, 0
+    correct, total = 0, 0
 
-    for imgs, states, labels in loader:
-        # imgs:   (B, T, C, H, W)
-        # states: (B, T, STATE_DIM)
-        # labels: (B, T)
-        imgs, states, labels = imgs.to(device), states.to(device), labels.to(device)
+    for imgs, states, labels, camera_targets in loader:
+        imgs   = imgs.to(device)
+        states = states.to(device)
+        labels = labels.to(device)
+        camera_targets = camera_targets.to(device)
         B, T, C, H, W = imgs.shape
 
         if is_training:
             optimizer.zero_grad()
 
-        # Extraer features visuales para todos los frames
-        features = extractor(imgs.reshape(B * T, C, H, W))  # (B*T, feat_dim)
-        features = features.view(B, T, -1)                   # (B, T, feat_dim)
+        features = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
+        logits, camera_pred = model(features, states)
 
-        # Predicción temporal
-        logits = model(features, states)                     # (B, T, num_actions)
-
-        # Loss sobre todos los timesteps
+        # Loss acción discreta
         logits_flat = logits.reshape(B * T, -1)
         labels_flat = labels.reshape(B * T)
-        loss = criterion(logits_flat, labels_flat)
+        action_loss = criterion(logits_flat, labels_flat)
+
+        # Loss cámara continua
+        camera_loss = camera_criterion(
+            camera_pred.reshape(B * T, -1),
+            camera_targets.reshape(B * T, -1),
+        )
+
+        loss = action_loss + camera_loss_weight * camera_loss
 
         if is_training:
             loss.backward()
             optimizer.step()
 
-        total_loss += loss.item()
-        correct    += (logits_flat.argmax(1) == labels_flat).sum().item()
-        total      += B * T
+        total_loss        += loss.item()
+        total_action_loss += action_loss.item()
+        total_camera_loss += camera_loss.item()
+        correct           += (logits_flat.argmax(1) == labels_flat).sum().item()
+        total             += B * T
 
-    return total_loss / len(loader), correct / total
+    n = len(loader)
+    return (total_loss / n, total_action_loss / n, total_camera_loss / n,
+            correct / total)
 
 
-def train_model(extractor, model, train_loader, val_loader, optimizer, scheduler,
-                criterion, epochs, patience=5, model_path="", plots_dir="."):
-    history      = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
+def train(extractor, model, dataset, train_loader, val_loader, optimizer, scheduler,
+          criterion, camera_criterion, camera_loss_weight, epochs, patience,
+          model_path, plots_dir):
+    history = {
+        'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': [],
+        'train_action_loss': [], 'train_camera_loss': [],
+        'val_action_loss': [],   'val_camera_loss': [],
+    }
     best_val_acc = 0
     patience_ctr = 0
 
     for epoch in range(epochs):
-        train_loss, train_acc = train_epoch(extractor, model, train_loader, criterion,
-                                            device, optimizer, is_training=True)
-        val_loss,   val_acc   = train_epoch(extractor, model, val_loader,   criterion,
-                                            device, is_training=False)
+        train_loss, train_act_loss, train_cam_loss, train_acc = train_epoch(
+            extractor, model, train_loader, criterion, camera_criterion,
+            device, camera_loss_weight, optimizer, is_training=True)
+        val_loss, val_act_loss, val_cam_loss, val_acc = train_epoch(
+            extractor, model, val_loader, criterion, camera_criterion,
+            device, camera_loss_weight, is_training=False)
 
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
+        history['train_action_loss'].append(train_act_loss)
+        history['train_camera_loss'].append(train_cam_loss)
         history['val_loss'].append(val_loss)
         history['val_acc'].append(val_acc)
+        history['val_action_loss'].append(val_act_loss)
+        history['val_camera_loss'].append(val_cam_loss)
 
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{epochs}: "
-              f"Train {train_acc:.1%} ({train_loss:.3f})  "
-              f"Val {val_acc:.1%} ({val_loss:.3f})  "
+              f"Train {train_acc:.1%} (act={train_act_loss:.3f} cam={train_cam_loss:.3f})  "
+              f"Val {val_acc:.1%} (act={val_act_loss:.3f} cam={val_cam_loss:.3f})  "
               f"lr={current_lr:.2e}")
 
         if val_acc > best_val_acc:
@@ -260,111 +265,76 @@ def train_model(extractor, model, train_loader, val_loader, optimizer, scheduler
                 break
 
     plot_training_history(history, save_dir=plots_dir)
-    plot_confusion_matrix(model, val_loader, dataset, device, save_dir=plots_dir)
+    plot_confusion_matrix(extractor, model, val_loader, dataset, device, save_dir=plots_dir)
     class_distribution([d['label'] for d in dataset.data], dataset, save_dir=plots_dir)
+    plot_camera_error(history, save_dir=plots_dir)
 
     return history
-
-
-def eval_model(extractor, model, val_loader, criterion, device):
-    total_loss, correct, total = 0, 0, 0
-    extractor.eval()
-    model.eval()
-
-    with torch.no_grad():
-        for imgs, states, labels in val_loader:
-            imgs, states, labels = imgs.to(device), states.to(device), labels.to(device)
-            B, T, C, H, W = imgs.shape
-            features    = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
-            logits      = model(features, states)
-            logits_flat = logits.reshape(B * T, -1)
-            labels_flat = labels.reshape(B * T)
-            loss        = criterion(logits_flat, labels_flat)
-            total_loss += loss.item()
-            correct    += (logits_flat.argmax(1) == labels_flat).sum().item()
-            total      += B * T
-
-    avg_loss = total_loss / len(val_loader)
-    accuracy = correct / total
-    print(f"VALIDATION FINAL: Loss {avg_loss:.3f}, Accuracy {accuracy:.1%}")
-    return avg_loss, accuracy
-
-
-def inference_step(extractor, model, image_path, dataset, device):
-    """Inferencia de una sola imagen (secuencia de SEQ_LEN frames idénticos)."""
-    extractor.eval()
-    model.eval()
-    with torch.no_grad():
-        img      = dataset.transforms(Image.open(image_path).convert("RGB"))
-        imgs     = img.unsqueeze(0).unsqueeze(0).expand(1, SEQ_LEN, -1, -1, -1).to(device)
-        states   = torch.zeros(1, SEQ_LEN, STATE_DIM, device=device)
-        B, T, C, H, W = imgs.shape
-        features = extractor(imgs.reshape(B * T, C, H, W)).view(B, T, -1)
-        logits   = model(features, states)          # (1, T, num_actions)
-        probs    = F.softmax(logits[0, -1], dim=0)  # último timestep
-        pred_id  = probs.argmax().item()
-        id2pair  = {v: k for k, v in dataset.pair2id.items()}
-        return id2pair[pred_id], round(probs[pred_id].item(), 4)
 
 
 if __name__ == "__main__":
     args = parse_args()
 
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    RUN_DIR   = get_run_dir(run_timestamp)
-    PLOTS_DIR = get_model_plots_dir(RUN_DIR)
-    LOG_PATH  = os.path.join(RUN_DIR, "log.txt")
-    logger    = TeeLogger(LOG_PATH) if args.mode != "inference" else None
+    run_dir   = get_run_dir(run_timestamp)
+    plots_dir = os.path.join(run_dir, "plots")
+    os.makedirs(plots_dir, exist_ok=True)
+    log_path  = os.path.join(run_dir, "log.txt")
+    logger    = TeeLogger(log_path)
 
-    JSONL_PATH   = args.dataset
-    BACKBONE     = args.backbone
-    EPOCHS       = args.epochs
-    LR           = args.lr
-    WEIGHT_DECAY = 5e-2
-    PATIENCE     = 3
+    HIDDEN_SIZE       = args.hidden_size
+    WEIGHT_DECAY      = 1e-2
+    PATIENCE          = 6
+    CAMERA_LOSS_WEIGHT = 1.0
 
-    backbone_name = BACKBONE.replace("resnet", "r")
-    MODEL_PATH    = os.path.join(RUN_DIR, f"model_{backbone_name}_{run_timestamp}.pth")
+    model_path = os.path.join(run_dir, f"model_rnn_{run_timestamp}.pth")
 
-    if not os.path.exists(JSONL_PATH):
-        print(f"Error: {JSONL_PATH} no existe.")
-        exit(1)
+    if not os.path.exists(args.dataset):
+        print(f"Error: {args.dataset} no existe.")
+        sys.exit(1)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = MinecraftDataset(jsonl_path=JSONL_PATH)
+    dataset = MinecraftDataset(jsonl_path=args.dataset)
+    if args.min_samples > 0:
+        dataset.filter_min_samples(args.min_samples)
     train_loader, val_loader = dataset.load_dataset()
     num_actions = len(dataset.pair2id)
 
-    extractor = ResNetExtractor(backbone=BACKBONE).to(device)
+    extractor = RNNExtractor(img_width=IMG_SIZE, hidden_size=HIDDEN_SIZE).to(device)
     model     = MinecraftILModel(
         num_actions=num_actions,
         feat_dim=extractor.feat_dim,
         state_dim=STATE_DIM,
         lstm_hidden=LSTM_HIDDEN,
+        camera_dim=CAMERA_DIM,
     ).to(device)
 
-    # Guardar config del run para que inference_server pueda reconstruir el modelo
-    config = save_run_config(RUN_DIR, BACKBONE, extractor.feat_dim, num_actions)
+    save_run_config(run_dir, HIDDEN_SIZE, extractor.feat_dim, num_actions)
 
     all_labels    = [d['label'] for d in dataset.data]
-    class_weights = compute_class_weight('balanced', classes=np.unique(all_labels), y=all_labels)
-    class_weights = np.clip(class_weights, a_min=None, a_max=10)
+    present       = np.unique(all_labels)
+    raw_weights   = compute_class_weight('balanced', classes=present, y=all_labels)
+    # Asignar peso máximo a clases sin muestras
+    class_weights = np.full(num_actions, 10.0)
+    for cls, w in zip(present, raw_weights):
+        class_weights[cls] = min(w, 10.0)
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
 
-    CRITERION = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.05)
-    OPTIMIZER = torch.optim.AdamW(
+    criterion        = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.001)
+    camera_criterion = nn.MSELoss()
+    optimizer = torch.optim.AdamW(
         list(filter(lambda p: p.requires_grad, extractor.parameters())) +
         list(model.parameters()),
-        lr=LR, weight_decay=WEIGHT_DECAY,
+        lr=args.lr, weight_decay=WEIGHT_DECAY,
     )
-    SCHEDULER = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        OPTIMIZER, mode='min', patience=2, factor=0.5, min_lr=1e-6,
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', patience=2, factor=0.5, min_lr=1e-6,
     )
 
-    write_run_summary(args, run_timestamp, extractor, model, dataset,
-                      train_loader, val_loader, class_weights, CRITERION,
-                      OPTIMIZER, SCHEDULER, WEIGHT_DECAY, PATIENCE, device)
+    print_run_summary(args, run_timestamp, extractor, model, dataset,
+                      train_loader, val_loader, class_weights, criterion,
+                      WEIGHT_DECAY, PATIENCE, device, CAMERA_LOSS_WEIGHT)
 
     id2pair = {v: k for k, v in dataset.pair2id.items()}
     print("Mappings ID -> Accion:")
@@ -373,51 +343,14 @@ if __name__ == "__main__":
     print()
 
     try:
-        if args.mode == "train":
-            print("MODO TRAIN\n")
-            train_model(extractor, model, train_loader, val_loader,
-                        OPTIMIZER, SCHEDULER, CRITERION, EPOCHS, PATIENCE,
-                        MODEL_PATH, PLOTS_DIR)
-            # Copiar config junto al modelo guardado
-            import shutil
-            shutil.copy(os.path.join(RUN_DIR, "config.json"),
-                        os.path.splitext(MODEL_PATH)[0] + "_config.json")
-            print(f"\nLog guardado en: {LOG_PATH}")
+        train(extractor, model, dataset, train_loader, val_loader,
+              optimizer, scheduler, criterion, camera_criterion,
+              CAMERA_LOSS_WEIGHT, args.epochs, PATIENCE,
+              model_path, plots_dir)
 
-        elif args.mode == "eval":
-            print("MODO EVAL\n")
-            if os.path.exists(args.model):
-                ckpt = torch.load(args.model, map_location=device)
-                extractor.load_state_dict(ckpt['extractor'])
-                model.load_state_dict(ckpt['model'])
-                eval_model(extractor, model, val_loader, CRITERION, device)
-            else:
-                print(f"Modelo no encontrado: {args.model}")
-
-        else:  # inference
-            print("MODO INFERENCE\n")
-            model_path = args.model if os.path.exists(args.model) else MODEL_PATH
-            if os.path.exists(model_path):
-                ckpt = torch.load(model_path, map_location=device)
-                extractor.load_state_dict(ckpt['extractor'])
-                model.load_state_dict(ckpt['model'])
-                print("Modelo cargado")
-            else:
-                print("WARNING: Sin modelo entrenado. Usando pesos aleatorios.")
-
-            while True:
-                img_path = input("\nRuta imagen (o 'q' para salir): ").strip()
-                if img_path.lower() == 'q':
-                    break
-                if not os.path.exists(img_path):
-                    print("Imagen no encontrada")
-                    continue
-                try:
-                    action_label, confidence = inference_step(
-                        extractor, model, img_path, dataset, device)
-                    print(f"\nPrediccion: {action_label}  ({confidence:.1%})")
-                except Exception as e:
-                    print(f"Error: {e}")
+        import shutil
+        shutil.copy(os.path.join(run_dir, "config.json"),
+                    os.path.splitext(model_path)[0] + "_config.json")
+        print(f"\nLog guardado en: {log_path}")
     finally:
-        if logger:
-            logger.close()
+        logger.close()

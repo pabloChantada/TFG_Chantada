@@ -21,6 +21,7 @@ import fs from 'fs'
 import path from 'path'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
+import { validateSetup, startServer, stopServer, findAvailablePort } from './paper_server.js'
 
 const args = yargs(hideBin(process.argv))
     .option('episodes', {
@@ -56,6 +57,16 @@ const args = yargs(hideBin(process.argv))
     .option('clean', {
         type: 'boolean',
         description: 'Limpiar el directorio de métricas antes de empezar',
+        default: false
+    })
+    .option('server-dir', {
+        type: 'string',
+        description: 'Directorio del servidor Paper',
+        default: 'server'
+    })
+    .option('no-server', {
+        type: 'boolean',
+        description: 'No gestionar el servidor (usar servidor externo)',
         default: false
     })
     .help()
@@ -176,15 +187,23 @@ async function main() {
     const recordingsDir  = args['recordings-dir']
     const outputJsonl    = args.output
     const pauseSec       = args.pause
+    const serverDir      = path.resolve(args['server-dir'])
+    const manageServer   = !args['no-server']
 
     console.log('╔══════════════════════════════════════════════════╗')
     console.log('║            MASS RECORDING — IL DATASET          ║')
     console.log('╠══════════════════════════════════════════════════╣')
     console.log(`║  Episodios:    ${String(episodes).padEnd(35)}║`)
     console.log(`║  Puerto MC:    ${String(mcPort).padEnd(35)}║`)
+    console.log(`║  Servidor:     ${(manageServer ? serverDir : 'externo').padEnd(35)}║`)
     console.log(`║  Recordings:   ${recordingsDir.padEnd(35)}║`)
     console.log(`║  Salida:       ${outputJsonl.padEnd(35)}║`)
     console.log('╚══════════════════════════════════════════════════╝\n')
+
+    if (manageServer) {
+        await validateSetup(serverDir)
+        console.log('[MASS] Servidor Paper validado ✓\n')
+    }
 
     if (args.clean) {
         console.log('[MASS] Limpiando directorio de grabaciones...')
@@ -195,16 +214,65 @@ async function main() {
     const startEp = getLastEpisodeNumber(recordingsDir) + 1
     if (startEp > 1) console.log(`[MASS] Continuando desde episodio ${startEp} (${startEp - 1} ya grabados)\n`)
 
+    // Handler para limpiar el servidor si se interrumpe el script
+    let currentServer = null
+    let cleaningUp = false
+    const cleanup = async () => {
+        if (cleaningUp) return
+        cleaningUp = true
+
+        process.off('SIGINT', cleanup)
+        process.off('SIGTERM', cleanup)
+
+        if (currentServer) {
+            console.log('\n[MASS] Interrumpido — parando servidor...')
+            await stopServer(currentServer)
+            currentServer = null
+        }
+        process.exit(1)
+    }
+    process.on('SIGINT', cleanup)
+    process.on('SIGTERM', cleanup)
+
     // ── Grabar episodios ──────────────────────────────────────────────
     const results = []
     for (let ep = startEp; ep < startEp + episodes; ep++) {
+        let episodeMcPort = mcPort
+
+        if (manageServer) {
+            episodeMcPort = await findAvailablePort(mcPort)
+            if (episodeMcPort !== mcPort) {
+                console.warn(`[MASS] Puerto ${mcPort} ocupado, usando ${episodeMcPort} para el episodio ${ep}.`)
+            }
+        }
+
+        // Arrancar servidor con mundo nuevo
+        if (manageServer) {
+            try {
+                const server = await startServer(serverDir, episodeMcPort)
+                currentServer = server.process
+                console.log(`[MASS] Episodio ${ep} — seed=${server.seed} — mcPort=${episodeMcPort}`)
+            } catch (e) {
+                console.error(`[MASS] Error arrancando servidor para episodio ${ep}: ${e.message}`)
+                results.push({ success: false, duration_s: 0 })
+                break
+            }
+        }
+
         const agentName = generateAgentName(ep)
-        const result = await runEpisode(ep, agentName, mcPort, basePort)
+        const result = await runEpisode(ep, agentName, episodeMcPort, basePort)
         results.push(result)
 
+        // Parar servidor
+        if (manageServer && currentServer) {
+            await stopServer(currentServer)
+            currentServer = null
+        }
+
         if (ep < startEp + episodes - 1) {
-            console.log(`\n Esperando ${pauseSec}s...`)
-            await sleep(pauseSec * 1000)
+            const wait = manageServer ? 2 : pauseSec
+            console.log(`\n Esperando ${wait}s...`)
+            await sleep(wait * 1000)
         }
     }
 

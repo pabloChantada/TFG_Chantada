@@ -114,5 +114,9 @@ runs/
 icons/
 plots/
 data/recordings/
+
+# Paper server
+server/
 train_balanced.jsonl
 train_cleaned.jsonl
+legacy/

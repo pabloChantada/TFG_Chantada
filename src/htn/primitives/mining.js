@@ -84,9 +84,7 @@ async function recoverFromWater(bot, timeout = 6000) {
  */
 
 async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAttempts = 5, opts = {}) {
-    // useFovCone=false: bot can rotate head to find any visible tree (360° line-of-sight, no wall hacking)
-    // useFovCone=true: strict RL-style, only finds trees currently in camera frame
-    const { useFovCone = false } = opts
+    const { useFovCone = true } = opts
     // Check if the block we want to mine is different from the item we want to obtain (e.g., mining "coal_ore" gives "coal")
     // If not, return the blockName as the itemName
     const itemName = getItemNameFromBlock(blockName)
@@ -104,13 +102,13 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
         // Increase search radius with each attempt to find more ores if they are not found nearby
         const currentRadius = searchRadius + (attempts * 16)
         // Only find blocks with exposed faces (visible to the bot, not buried underground)
-        bot._datasetRecorder?.setIntent('search_tree')
+
         let ore = findNearestVisibleBlock(bot, mcData, blockName, currentRadius, useFovCone)
 
         if (ore) {
             if (isUnderwaterTarget(bot, ore)) {
                 console.warn(`[mineBlock] Underwater detected (oxygen: ${bot.oxygenLevel}/20). Skipping ${blockName} and exploring elsewhere...`)
-                bot._datasetRecorder?.setIntent('explore')
+
                 await exploreRandom(bot, 24)
                 attempts++
                 continue
@@ -132,7 +130,6 @@ async function mineBlock(bot, mcData, blockName, count, searchRadius = 32, maxAt
             // Cycle strategies across attempts instead of failing after 3 misses.
             // This gives maxAttempts real value and improves recovery in difficult terrain.
             const strategy = notFoundCount % 4
-            bot._datasetRecorder?.setIntent('explore')
             if (strategy === 0) {
                 //zSurface exploration, likely to find cave openings
                 await exploreRandom(bot, 50)
@@ -167,7 +164,7 @@ async function mine(bot, block) {
     if (!block) throw new Error(`[ERROR] ${botLabel} No block provided for mining.`)
     
     try {
-        bot._datasetRecorder?.setIntent('approach_tree')
+
         const escapedWater = await recoverFromWater(bot)
         if (!escapedWater) {
             throw new Error(`Drowning risk detected before mining`)
@@ -208,11 +205,10 @@ async function mine(bot, block) {
             throw new Error(`Block disappeared before mining`)
         }
 
-        bot._datasetRecorder?.setIntent('chop_tree')
+
         const minedPos = currentBlock.position.clone()
         const minedName = currentBlock.name
         await bot.collectBlock.collect(currentBlock)
-        bot._datasetRecorder?.setIntent('collect_wood')
         // Mine the rest of the trunk straight up (non-omniscient: adjacent known positions)
         await mineTreeTrunk(bot, minedName, minedPos)
     } catch (e) {
@@ -236,7 +232,6 @@ async function mineTreeTrunk(bot, woodType, basePos) {
     if (!firstAbove || firstAbove.name !== woodType) return
 
     // Step under the trunk column so the upward chopping looks natural
-    bot._datasetRecorder?.setIntent('approach_tree')
     try {
         await bot.pathfinder.goto(new goals.GoalNear(basePos.x, basePos.y, basePos.z, 0))
     } catch (_e) { /* continue even if positioning is imperfect */ }
@@ -246,10 +241,10 @@ async function mineTreeTrunk(bot, woodType, basePos) {
         const block = bot.blockAt(pos)
         if (!block || block.name !== woodType) break
         try {
-            bot._datasetRecorder?.setIntent('chop_tree')
+    
             await bot.lookAt(block.position.offset(0.5, 0.5, 0.5))
             await bot.dig(block)
-            bot._datasetRecorder?.setIntent('collect_wood')
+
             await bot.waitForTicks(2)
         } catch (_e) {
             break

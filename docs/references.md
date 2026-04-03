@@ -7,3 +7,6 @@ PESOS RESNET18: https://docs.pytorch.org/vision/main/models/generated/torchvisio
 
 NORMALIZACION DE LA RESNET: https://discuss.pytorch.org/t/what-is-the-correct-pytorch-resnet50-input-normalization-intensity-range/147540
 
+ConvLSTM: https://arxiv.org/html/2502.08869v1
+
+Servers: https://papermc.io/

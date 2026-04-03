@@ -5,7 +5,7 @@
  * leyendo bot.controlState (movimiento) y el delta de yaw/pitch entre capturas (cámara).
  * Los frames sin acción detectable se descartan.
  *
- * Acciones detectables:
+ * Acciones discretas detectables:
  *   move_forward_sprint  - forward + sprint activos
  *   move_forward_walk    - forward activo
  *   move_backward_walk   - back activo
@@ -14,10 +14,10 @@
  *   jump                 - jump activo
  *   sneak                - sneak activo
  *   attack               - bot.targetDigBlock no nulo
- *   camera_yaw_p15/m15   - delta yaw entre 5° y 30°
- *   camera_yaw_p45/m45   - delta yaw >= 30°
- *   camera_pitch_p15/m15 - delta pitch entre 5° y 30°
- *   camera_pitch_p45/m45 - delta pitch >= 30°
+ *
+ * Además, cada frame incluye camera_delta: {dyaw, dpitch} (radianes),
+ * el cambio de cámara respecto al frame anterior, grabado de forma continua
+ * e independiente de la acción discreta.
  *
  * Nota: equip_wooden_axe no se detecta automáticamente (acción instantánea sin
  * estado persistente). Se puede añadir en sesiones de teleoperación manual.
@@ -39,12 +39,8 @@ import puppeteer from 'puppeteer'
 import { findNearestVisibleBlock } from '../htn/primitives/blocks.js'
 
 // - Timing ----------------------------------
-const TICK_MS            = 200   // Resolución del timer
-const NORMAL_INTERVAL_MS = 800   // Intervalo de captura
-
-// - Umbrales de detección de cámara (en radianes) ------
-const MIN_CAMERA_RAD   = 5  * Math.PI / 180   // < 5°  → ignorar
-const SPLIT_CAMERA_RAD = 30 * Math.PI / 180   // ≥ 30° → acción p45/m45
+const TICK_MS              = 200   // Resolución del timer
+const DEFAULT_INTERVAL_MS  = 800   // Intervalo de captura por defecto
 
 // - Screenshot / viewer ----------------------------
 const VIEWER_WIDTH      = 854
@@ -82,7 +78,13 @@ class DatasetRecorder {
      * @param {import('mineflayer').Bot} bot
      * @param {Object} mcData  - resultado de minecraftData(bot.version)
      */
-    constructor(bot, mcData) {
+    /**
+     * @param {import('mineflayer').Bot} bot
+     * @param {Object} mcData  - resultado de minecraftData(bot.version)
+     * @param {Object} [opts]
+     * @param {number} [opts.intervalMs] - Intervalo de captura en ms (default: 800)
+     */
+    constructor(bot, mcData, opts = {}) {
         this.bot    = bot
         this.mcData = mcData
 
@@ -91,10 +93,11 @@ class DatasetRecorder {
         this._frameCount = 0
 
         // Runtime
-        this._running   = false
-        this._timer     = null
-        this._capturing = false
+        this._running    = false
+        this._timer      = null
+        this._capturing  = false
         this._lastCaptureTime = 0
+        this._intervalMs = opts.intervalMs || DEFAULT_INTERVAL_MS
 
         // Seguimiento de cámara (delta entre capturas)
         this._prevYaw   = 0
@@ -123,12 +126,6 @@ class DatasetRecorder {
     setWoodType(woodType) {
         this._woodType = woodType
     }
-
-    /**
-     * No-op: mantenido para compatibilidad con llamadas desde primitivas HTN.
-     * La acción ya no se etiqueta por intent sino detectada en _capture().
-     */
-    setIntent(_intent) {}
 
     // - Lifecycle -------------------------------
 
@@ -161,7 +158,7 @@ class DatasetRecorder {
         this._lastCaptureTime = Date.now()
         this._scheduleTick()
 
-        console.log(`[DatasetRecorder] Iniciado — intervalo ${NORMAL_INTERVAL_MS}ms`)
+        console.log(`[DatasetRecorder] Iniciado — intervalo ${this._intervalMs}ms`)
     }
 
     async stop() {
@@ -201,7 +198,7 @@ class DatasetRecorder {
         }
 
         const now = Date.now()
-        if (now < this._lastCaptureTime + NORMAL_INTERVAL_MS) {
+        if (now < this._lastCaptureTime + this._intervalMs) {
             this._scheduleTick()
             return
         }
@@ -218,11 +215,25 @@ class DatasetRecorder {
         this._scheduleTick()
     }
 
-    // - Detección de acción discreta -----------------
+    // - Detección de acción discreta + delta de cámara ------
+
+    /**
+     * Calcula el delta de cámara respecto al frame anterior (en radianes).
+     * Se graba siempre, independientemente de la acción discreta.
+     */
+    _getCameraDelta() {
+        const dyaw   = this.bot.entity.yaw   - this._prevYaw
+        const dpitch = this.bot.entity.pitch - this._prevPitch
+        return {
+            dyaw:   Math.round(dyaw   * 10000) / 10000,
+            dpitch: Math.round(dpitch * 10000) / 10000,
+        }
+    }
 
     /**
      * Detecta la acción discreta que el bot está ejecutando en este momento.
-     * Prioridad: movimiento > ataque > cámara.
+     * Prioridad: movimiento > ataque.
+     * La cámara ya NO es una acción discreta (se graba como camera_delta continuo).
      * Devuelve null si no hay acción detectable (frame a descartar).
      */
     _detectAction() {
@@ -239,21 +250,6 @@ class DatasetRecorder {
 
         // Ataque: bot.targetDigBlock es no nulo mientras bot.dig() está activo
         if (this.bot.targetDigBlock) return 'attack'
-
-        // Cámara: delta respecto al frame anterior
-        const dyaw   = this.bot.entity.yaw   - this._prevYaw
-        const dpitch = this.bot.entity.pitch - this._prevPitch
-        const absYaw   = Math.abs(dyaw)
-        const absPitch = Math.abs(dpitch)
-
-        if (absYaw >= absPitch && absYaw >= MIN_CAMERA_RAD) {
-            if (absYaw >= SPLIT_CAMERA_RAD) return dyaw > 0 ? 'camera_yaw_p45' : 'camera_yaw_m45'
-            return dyaw > 0 ? 'camera_yaw_p15' : 'camera_yaw_m15'
-        }
-        if (absPitch >= MIN_CAMERA_RAD) {
-            if (absPitch >= SPLIT_CAMERA_RAD) return dpitch > 0 ? 'camera_pitch_p45' : 'camera_pitch_m45'
-            return dpitch > 0 ? 'camera_pitch_p15' : 'camera_pitch_m15'
-        }
 
         return null  // sin acción detectable → descartar frame
     }
@@ -283,7 +279,8 @@ class DatasetRecorder {
         const curYaw   = this.bot.entity.yaw
         const curPitch = this.bot.entity.pitch
 
-        const action = this._detectAction()
+        const camera_delta = this._getCameraDelta()
+        const action       = this._detectAction()
 
         // Actualizar seguimiento de cámara siempre (tanto si se guarda como si no)
         this._prevYaw   = curYaw
@@ -313,6 +310,7 @@ class DatasetRecorder {
                 pitch: Math.round(curPitch  * 10000) / 10000
             },
             action,
+            camera_delta,
             session_id:   this._sessionId,
             tree_visible,
             tree_distance
@@ -327,9 +325,11 @@ class DatasetRecorder {
 
 /**
  * Crea e inicia un DatasetRecorder, adjuntándolo a bot._datasetRecorder.
+ * @param {Object} [opts]
+ * @param {number} [opts.intervalMs] - Intervalo de captura en ms (default: 800)
  */
-export async function setupRecorder(bot, mcData, viewerPort = 3000) {
-    const recorder = new DatasetRecorder(bot, mcData)
+export async function setupRecorder(bot, mcData, viewerPort = 3000, opts = {}) {
+    const recorder = new DatasetRecorder(bot, mcData, opts)
     bot._datasetRecorder = recorder
 
     try {
