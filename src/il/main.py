@@ -11,7 +11,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from plots import *
 from load_dataset import MinecraftDataset, MIRROR_PAIRS
-from model import RNNExtractor, MinecraftILModel
+from model import RNNExtractor, ViTExtractor, MinecraftILModel
 from model_convlstm import MinecraftConvLSTMModel
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,8 +56,16 @@ def parse_args():
     parser.add_argument('--min-samples', type=int,   default=0,
                         help='Eliminar clases con menos de N muestras (default: 0 = desactivado)')
     parser.add_argument('--model',       type=str,   default='rnn',
-                        choices=['rnn', 'convlstm'],
-                        help='Arquitectura del modelo: rnn (GRU+LSTM) o convlstm (CNN+ConvLSTM)')
+                        choices=['rnn', 'convlstm', 'vit'],
+                        help='Arquitectura del modelo: rnn (GRU+LSTM), convlstm (CNN+ConvLSTM) o vit (ViT+LSTM)')
+    parser.add_argument('--vit-model',   type=str,   default='vit_small_patch16_224',
+                        help='Nombre del modelo timm para el extractor ViT')
+    parser.add_argument('--vit-feat-dim', type=int,  default=256,
+                        help='Dimensión del embedding de salida del ViTExtractor')
+    parser.add_argument('--no-pretrained', action='store_true',
+                        help='Entrenar el ViT desde cero (sin pesos ImageNet)')
+    parser.add_argument('--vit-unfreeze-blocks', type=int, default=0,
+                        help='Nº de bloques ViT finales a entrenar (0=solo proj, -1=todo)')
     return parser.parse_args()
 
 
@@ -134,7 +142,11 @@ def print_run_summary(args, run_timestamp, extractor, model, dataset,
     print(f"  MODELO")
     print(f"  {SEP2}")
     if extractor is not None:
-        print(f"  Extractor    : RNNExtractor(img_size={IMG_SIZE}, hidden={extractor.feat_dim})")
+        ext_name = type(extractor).__name__
+        if ext_name == 'ViTExtractor':
+            print(f"  Extractor    : ViTExtractor({extractor.vit.default_cfg['architecture'] if hasattr(extractor.vit, 'default_cfg') else ''}, img_size={IMG_SIZE}, feat_dim={extractor.feat_dim})")
+        else:
+            print(f"  Extractor    : RNNExtractor(img_size={IMG_SIZE}, hidden={extractor.feat_dim})")
         print(f"  state_proj   : Linear({STATE_DIM} → {extractor.feat_dim})")
         print(f"  LSTM         : ({extractor.feat_dim} → {model.lstm_hidden})")
         print(f"  action_head  : Dropout(0.5) → Linear({model.lstm_hidden} → {len(id2pair)})")
@@ -325,6 +337,22 @@ if __name__ == "__main__":
             camera_dim=CAMERA_DIM,
         ).to(device)
         model_path = os.path.join(run_dir, f"model_convlstm_{run_timestamp}.pth")
+    elif args.model == 'vit':
+        extractor = ViTExtractor(
+            img_size=IMG_SIZE,
+            feat_dim=args.vit_feat_dim,
+            model_name=args.vit_model,
+            pretrained=not args.no_pretrained,
+            unfreeze_blocks=args.vit_unfreeze_blocks,
+        ).to(device)
+        model = MinecraftILModel(
+            num_actions=num_actions,
+            feat_dim=extractor.feat_dim,
+            state_dim=STATE_DIM,
+            lstm_hidden=LSTM_HIDDEN,
+            camera_dim=CAMERA_DIM,
+        ).to(device)
+        model_path = os.path.join(run_dir, f"model_vit_{run_timestamp}.pth")
     else:
         extractor = RNNExtractor(img_width=IMG_SIZE, hidden_size=HIDDEN_SIZE).to(device)
         model = MinecraftILModel(

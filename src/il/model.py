@@ -1,5 +1,68 @@
 import torch
 import torch.nn as nn
+import timm
+
+
+class ViTExtractor(nn.Module):
+    """
+    Extractor de features visuales basado en Vision Transformer (ViT) via timm.
+
+    Usa vit_small_patch16_224 con img_size=128 (patch 16×16 → 64 tokens).
+    La cabeza de clasificación se reemplaza por una proyección lineal a feat_dim.
+
+    Entrada : (N, C, H, W)  con H=W=img_size
+    Salida  : (N, feat_dim)
+    """
+
+    def __init__(self, img_size: int = 128, feat_dim: int = 256,
+                 model_name: str = "vit_small_patch16_224", pretrained: bool = True,
+                 unfreeze_blocks: int = 0):
+        """
+        Args:
+            unfreeze_blocks : nº de bloques Transformer finales que se entrenan.
+                              0  → backbone completamente congelado (solo proj entrenable).
+                             -1  → todo el backbone descongelado (fine-tuning completo).
+        """
+        super().__init__()
+        self.feat_dim = feat_dim
+
+        self.vit = timm.create_model(
+            model_name,
+            pretrained=pretrained,
+            img_size=img_size,
+            num_classes=0,      # elimina la cabeza de clasificación → salida embed_dim
+        )
+        vit_out_dim = self.vit.embed_dim   # 384 para vit_small
+        self.proj = nn.Linear(vit_out_dim, feat_dim) if vit_out_dim != feat_dim else nn.Identity()
+
+        self._apply_freeze(unfreeze_blocks)
+
+    def _apply_freeze(self, unfreeze_blocks: int):
+        # Congelar todo el backbone por defecto
+        for p in self.vit.parameters():
+            p.requires_grad = False
+
+        if unfreeze_blocks == -1:
+            # Descongelar todo
+            for p in self.vit.parameters():
+                p.requires_grad = True
+        elif unfreeze_blocks > 0:
+            # Descongelar los últimos N bloques + norm final
+            blocks = list(self.vit.blocks)
+            for block in blocks[-unfreeze_blocks:]:
+                for p in block.parameters():
+                    p.requires_grad = True
+            for p in self.vit.norm.parameters():
+                p.requires_grad = True
+
+    def forward(self, imgs: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            imgs : (N, C, H, W)
+        Returns:
+            feats : (N, feat_dim)
+        """
+        return self.proj(self.vit(imgs))
 
 
 class RNNExtractor(nn.Module):

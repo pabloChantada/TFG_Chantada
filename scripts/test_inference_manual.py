@@ -87,7 +87,7 @@ def main():
                 t0 = time.time()
                 png_bytes = capture_to_png(sct, monitor)
                 result = send_predict(png_bytes, port=args.port)
-                latency_ms = (time.time() - t0) * 1000
+                latency_ms = (time.time() - t0) * 100
                 step += 1
                 print_result(result, step, latency_ms)
 
