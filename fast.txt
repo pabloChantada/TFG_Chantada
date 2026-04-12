@@ -1,0 +1,4 @@
+cojer deep features y sumar localizacion (normalizada), mismo tañano que deepfeatures
+usar discreta con categorical crossentropy y softmax
+
+devovler la secuencia de ejecuciones, no solo la ultima
