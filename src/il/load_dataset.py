@@ -262,7 +262,7 @@ class MinecraftDataset(Dataset):
             T.ToTensor(),
             T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ])
-        train_ds.use_mirror_flip = True
+        train_ds.use_mirror_flip = False
         mirror_label_map: dict[int, int] = {}
         for action_a, action_b in MIRROR_PAIRS:
             id_a = self.pair2id.get(action_a)

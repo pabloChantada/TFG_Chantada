@@ -26,16 +26,18 @@ const INFERENCE_HOST  = 'localhost'
 const INFERENCE_PORT  = 8765
 const INFERENCE_PATH  = '/predict'
 
-const STEP_INTERVAL_MS  = 800   // Mínimo ms entre pasos del modelo
-const MOVE_HOLD_MS      = 250   // Duración de acciones de movimiento
+const STEP_INTERVAL_MS  = 1000   // Mínimo ms entre pasos del modelo
+const MOVE_HOLD_MS      = 100   // Duración de acciones de movimiento
 const BROWSER_WARMUP_MS = 2000  // Espera inicial del viewer
 const VIEWER_WIDTH      = 854
 const VIEWER_HEIGHT     = 480
 
-const ACTION_SWITCH_THRESHOLD = 0.8  // Confianza mínima para cambiar de acción
+const ACTION_SWITCH_THRESHOLD = 0.7  // Confianza mínima para cambiar de acción
 
 const CAMERA_DEAD_ZONE = 0.01   // rad (~0.6°) — deltas menores se ignoran (ruido)
 const PITCH_DECAY      = 0.9   // Factor de decaimiento del pitch hacia horizonte cada step
+
+const LOG_TYPES = ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'jungle_log', 'acacia_log']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +108,7 @@ async function executeILAction(bot, action, cameraDelta = null) {
 
         case 'jump':
             bot.setControlState('jump', true)
-            await sleep(200)
+            await sleep(MOVE_HOLD_MS)
             bot.setControlState('jump', false)
             break
 
@@ -121,11 +123,10 @@ async function executeILAction(bot, action, cameraDelta = null) {
         case 'attack': {
             const block = bot.blockAtCursor(4.5)
             if (block && block.type !== 0 && bot.canDigBlock(block)) {
-                // Apuntar cámara al bloque antes de picar (evita drift de deltas acumulados)
                 const bp = block.position.offset(0.5, 0.5, 0.5)
                 await bot.lookAt(bp, false)
                 try { await bot.dig(block, 'ignore') } catch (_) {}
-                skipCameraDelta = true  // Solo si hay bloque; si no, dejar que el delta corrija la cámara
+                skipCameraDelta = true
             }
             break
         }
@@ -337,12 +338,16 @@ export class ILAgent extends BaseAgent {
 
     _getTreeInfo() {
         try {
-            const block = findNearestVisibleBlock(this.bot, this._mcData, 'oak_log', 32)
-            if (!block) return { tree_visible: 0, tree_distance: 0 }
-            const dist = this.bot.entity.position.distanceTo(block.position)
-            return { tree_visible: 1, tree_distance: Math.round(dist * 10) / 10 }
+            for (const logType of LOG_TYPES) {
+                const block = findNearestVisibleBlock(this.bot, this._mcData, logType, 32)
+                if (block) {
+                    const dist = this.bot.entity.position.distanceTo(block.position)
+                    return { tree_visible: 1, tree_distance: Math.round(dist * 10) / 10, block }
+                }
+            }
+            return { tree_visible: 0, tree_distance: 0, block: null }
         } catch (_) {
-            return { tree_visible: 0, tree_distance: 0 }
+            return { tree_visible: 0, tree_distance: 0, block: null }
         }
     }
 
