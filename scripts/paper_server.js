@@ -19,7 +19,6 @@ import net from 'net'
 const JAR_NAME   = 'paper-1.20.1.jar'
 const WORLD_DIRS = ['world', 'world_nether', 'world_the_end']
 const STOP_PROMISES = new WeakMap()
-
 // ── Helpers internos ────────────────────────────────────────────────────────
 
 function ensureEula(serverDir) {
@@ -39,15 +38,19 @@ function deleteWorlds(serverDir) {
  * single_biome_surface vía server.properties, así que usamos esto.
  */
 function installSingleBiomeDatapack(serverDir) {
-    const dpDir = path.join(serverDir, 'world', 'datapacks', 'single_biome_forest')
+    const dpDir  = path.join(serverDir, 'world', 'datapacks', 'single_biome_forest')
     const dimDir = path.join(dpDir, 'data', 'minecraft', 'dimension')
+    const tagDir = path.join(dpDir, 'data', 'minecraft', 'tags', 'functions')
+    const fnDir  = path.join(dpDir, 'data', 'training', 'functions')
     fs.mkdirSync(dimDir, { recursive: true })
+    fs.mkdirSync(tagDir, { recursive: true })
+    fs.mkdirSync(fnDir,  { recursive: true })
 
     // pack.mcmeta — pack_format 15 = MC 1.20–1.20.1
     fs.writeFileSync(path.join(dpDir, 'pack.mcmeta'), JSON.stringify({
         pack: {
             pack_format: 15,
-            description: 'Force single biome: forest'
+            description: 'Training: forest biome + haste'
         }
     }, null, 2))
 
@@ -63,6 +66,16 @@ function installSingleBiomeDatapack(serverDir) {
             settings: 'minecraft:overworld'
         }
     }, null, 2))
+
+    // Tick function: haste 255 permanente + día forzado (sin depender de que el bot sea op)
+    fs.writeFileSync(path.join(tagDir, 'tick.json'), JSON.stringify(
+        { values: ['training:tick'] }, null, 2
+    ))
+    fs.writeFileSync(path.join(fnDir, 'tick.mcfunction'), [
+        'effect give @a minecraft:haste 2 255 true',
+        'effect give @a minecraft:saturation 2 255 true',
+        'time set day',
+    ].join('\n') + '\n')
 }
 
 function writeServerProperties(serverDir, seed, port = 25565) {
@@ -71,17 +84,17 @@ function writeServerProperties(serverDir, seed, port = 25565) {
         'online-mode=false',
         `level-seed=${seed}`,
         'gamemode=survival',
-        'difficulty=easy',
+        'difficulty=peaceful',
         'spawn-protection=0',
         'max-players=5',
         'view-distance=10',
         'enable-command-block=false',
-        'motd=IL Recording Server',
+        'motd=Training Server',
         'level-name=world',
         'generate-structures=true',
         'pvp=false',
         'allow-nether=false',
-        'spawn-monsters=true',
+        'spawn-monsters=false',
         'spawn-animals=true',
     ].join('\n') + '\n'
 
@@ -90,6 +103,21 @@ function writeServerProperties(serverDir, seed, port = 25565) {
 
 function generateSeed() {
     return crypto.randomInt(0, 2 ** 48 - 1)
+}
+
+function readSeedFile(serverDir) {
+    const seedPath = path.join(serverDir, 'seed.txt')
+    if (!fs.existsSync(seedPath)) {
+        throw new Error(
+            `--fixed-seed activo pero no existe ${seedPath}.\n` +
+            `Crea ese fichero con un número entero, p.ej.: echo 7145048257670320778 > server/seed.txt`
+        )
+    }
+    const raw = fs.readFileSync(seedPath, 'utf8').trim()
+    if (!/^-?\d+$/.test(raw)) {
+        throw new Error(`seed.txt contiene "${raw}", se esperaba un entero.`)
+    }
+    return raw   // devolver como string para evitar pérdida de precisión en BigInt seeds
 }
 
 function isPortInUse(port, host = '0.0.0.0') {
@@ -233,13 +261,15 @@ async function validateSetup(serverDir) {
 }
 
 /**
- * Arranca un servidor Paper con un mundo nuevo y seed aleatoria.
- * @param {string} serverDir - Ruta a la carpeta del servidor
- * @param {number} port - Puerto del servidor (default 25565)
- * @returns {Promise<{process: ChildProcess, seed: number}>}
+ * Arranca un servidor Paper con un mundo nuevo.
+ * @param {string} serverDir  - Ruta a la carpeta del servidor
+ * @param {number} port       - Puerto del servidor (default 25565)
+ * @param {object} opts
+ * @param {boolean} opts.useSeed - Si true, lee la seed de server/seed.txt; si no, genera una aleatoria
+ * @returns {Promise<{process: ChildProcess, seed: string|number}>}
  */
-async function startServer(serverDir, port = 25565) {
-    const seed = generateSeed()
+async function startServer(serverDir, port = 25565, { useSeed = false } = {}) {
+    const seed = useSeed ? readSeedFile(serverDir) : generateSeed()
 
     const portBusy = await isPortInUse(port)
     if (portBusy) {

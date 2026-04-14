@@ -10,3 +10,7 @@ NORMALIZACION DE LA RESNET: https://discuss.pytorch.org/t/what-is-the-correct-py
 ConvLSTM: https://arxiv.org/html/2502.08869v1
 
 Servers: https://papermc.io/
+
+MineRL: https://www.youtube.com/watch?v=q9DtmFJMc5I | https://github.com/minerllabs/minerl
+
+Refuerzo: https://arxiv.org/pdf/1803.08456

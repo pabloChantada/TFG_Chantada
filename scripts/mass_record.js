@@ -80,6 +80,11 @@ const args = yargs(hideBin(process.argv))
         description: 'No gestionar el servidor (usar servidor externo)',
         default: false
     })
+    .option('fixed-seed', {
+        type: 'boolean',
+        description: 'Usar la seed fija de server/seed.txt en lugar de una aleatoria',
+        default: false
+    })
     .help()
     .parse()
 
@@ -216,6 +221,7 @@ async function main() {
     const pauseSec       = args.pause
     const serverDir      = path.resolve(args['server-dir'])
     const manageServer   = !args['no-server']
+    const fixedSeed      = args['fixed-seed']
 
     console.log('╔══════════════════════════════════════════════════╗')
     console.log('║            MASS RECORDING — IL DATASET          ║')
@@ -280,7 +286,7 @@ async function main() {
         // Arrancar servidor con mundo nuevo
         if (manageServer) {
             try {
-                const server = await startServer(serverDir, episodeMcPort)
+                const server = await startServer(serverDir, episodeMcPort, { useSeed: fixedSeed })
                 currentServer = server.process
                 console.log(`[MASS] Episodio ${ep} — seed=${server.seed} — mcPort=${episodeMcPort}`)
             } catch (e) {
