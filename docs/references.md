@@ -10,3 +10,5 @@ NORMALIZACION DE LA RESNET: https://discuss.pytorch.org/t/what-is-the-correct-py
 ConvLSTM: https://arxiv.org/html/2502.08869v1
 
 Servers: https://papermc.io/
+
+Agent Divisions: https://arxiv.org/pdf/2111.08857
