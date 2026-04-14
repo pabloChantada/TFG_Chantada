@@ -14,3 +14,5 @@ Servers: https://papermc.io/
 MineRL: https://www.youtube.com/watch?v=q9DtmFJMc5I | https://github.com/minerllabs/minerl
 
 Refuerzo: https://arxiv.org/pdf/1803.08456
+
+Agent Divisions: https://arxiv.org/pdf/2111.08857
