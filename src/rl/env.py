@@ -83,12 +83,14 @@ class MinecraftRLEnv(gym.Env):
         use_visual:  bool = False,
         frame_stack: int  = 1,
         render_mode: str | None = None,
+        max_steps:   int  = MAX_STEPS,
     ):
         super().__init__()
         self.bridge_url  = f"http://localhost:{bridge_port}"
         self.use_visual  = use_visual
         self.frame_stack = max(1, frame_stack)
         self.render_mode = render_mode
+        self._max_steps  = max_steps
 
         # ── Espacio de observaciones ──────────────────────────────────────────
         obs_dim     = STATE_DIM * self.frame_stack
@@ -117,6 +119,8 @@ class MinecraftRLEnv(gym.Env):
         # Shaping: distancia al árbol (para reward de acercamiento)
         self._prev_tree_distance: float = 0.0
         self._last_tree_distance: float = 0.0
+        self._prev_tree_visible:  float = 0.0
+        self._last_tree_visible:  float = 0.0
         # Recompensa por recoger troncos: delta de inventario entre steps
         self._log_count_delta: int = 0
 
@@ -132,6 +136,8 @@ class MinecraftRLEnv(gym.Env):
         self._last_is_looking_at_log = 0.0
         self._prev_tree_distance = 0.0
         self._last_tree_distance = 0.0
+        self._prev_tree_visible  = 0.0
+        self._last_tree_visible  = 0.0
         self._log_count_delta    = 0
 
         resp = self._post("/reset", {})
@@ -161,7 +167,7 @@ class MinecraftRLEnv(gym.Env):
             terminated = True
             reward    += REWARD_DONE_PENALTY
 
-        if self._step_count >= MAX_STEPS:
+        if self._step_count >= self._max_steps:
             truncated = True
 
         info = {
@@ -170,7 +176,9 @@ class MinecraftRLEnv(gym.Env):
             "action_name":       action_name,
             "blocks_broken":     events.get("blocks_broken", []),
             "is_attacking_tree": events.get("is_attacking_tree", False),
-            "log_count":         self._prev_log_count,
+            "attacked_block":    events.get("attacked_block", None),
+            "log_broken":         self._prev_log_count,
+            "logs_collected":    self._log_count_delta,   # troncos recogidos este step
         }
 
         return obs, reward, terminated, truncated, info
@@ -203,8 +211,11 @@ class MinecraftRLEnv(gym.Env):
             reward += REWARD_LOOK_AT_LOG
 
         # Shaping: acercarse al árbol visible
-        if self._prev_tree_distance > 0 and self._last_tree_distance > 0:
-            delta = self._prev_tree_distance - self._last_tree_distance  # positivo = se acercó
+        # Requiere árbol visible en ambos steps Y limita el delta a 2 bloques/step
+        # para evitar señal falsa cuando cambia el árbol detectado por el FOV cone
+        if self._prev_tree_visible > 0.5 and self._last_tree_visible > 0.5:
+            delta = self._prev_tree_distance - self._last_tree_distance
+            delta = max(-2.0, min(2.0, delta))  # clamp: máximo 2 bloques por step
             reward += delta * REWARD_APPROACH
 
         return reward
@@ -219,7 +230,8 @@ class MinecraftRLEnv(gym.Env):
         yaw  = float(raw.get("yaw",                0.0))
         pitch= float(raw.get("pitch",              0.0))
         tv   = float(raw.get("tree_visible",       0.0))
-        td   = float(raw.get("tree_distance",      0.0))
+        _td_raw = raw.get("tree_distance")
+        td   = float(_td_raw) if (_td_raw is not None and tv > 0.5) else STATE_BOUNDS["tree_distance"][1]
         lc   = float(raw.get("log_count",          0.0))
         ill  = float(raw.get("is_looking_at_log",  0.0))
 
@@ -244,6 +256,8 @@ class MinecraftRLEnv(gym.Env):
         # Shaping: distancia al árbol (rotamos prev → last para _compute_reward)
         self._prev_tree_distance = self._last_tree_distance
         self._last_tree_distance = td
+        self._prev_tree_visible  = self._last_tree_visible
+        self._last_tree_visible  = tv
 
         state_vec = np.array([
             _norm(yaw,   "yaw"),

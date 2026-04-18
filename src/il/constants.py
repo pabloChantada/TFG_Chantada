@@ -49,9 +49,9 @@ STATE_DIM = len(STATE_KEYS)  # 9
 # Preferimos bounds conocidos del entorno (no data-driven) para que la
 # normalización sea estable entre rebuilds del dataset.
 STATE_BOUNDS = {
-    "x":              (-1000,    1000),
-    "y":              (0,         256),
-    "z":              (-1000,    1000),
+    "x":              (-200,    200),
+    "y":              (0,       256),
+    "z":              (-200,    200),
     "yaw":            (-math.pi, math.pi),      # mineflayer → radianes
     "pitch":          (-math.pi/2, math.pi/2),   # mineflayer → radianes
     "dx":             (-1,       1),

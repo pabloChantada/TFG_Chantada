@@ -345,9 +345,9 @@ export class ILAgent extends BaseAgent {
                     return { tree_visible: 1, tree_distance: Math.round(dist * 10) / 10, block }
                 }
             }
-            return { tree_visible: 0, tree_distance: 0, block: null }
+            return { tree_visible: 0, tree_distance: null, block: null }
         } catch (_) {
-            return { tree_visible: 0, tree_distance: 0, block: null }
+            return { tree_visible: 0, tree_distance: null, block: null }
         }
     }
 

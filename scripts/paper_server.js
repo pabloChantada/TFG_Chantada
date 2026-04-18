@@ -72,7 +72,6 @@ function installSingleBiomeDatapack(serverDir) {
         { values: ['training:tick'] }, null, 2
     ))
     fs.writeFileSync(path.join(fnDir, 'tick.mcfunction'), [
-        'effect give @a minecraft:haste 2 255 true',
         'effect give @a minecraft:saturation 2 255 true',
         'time set day',
     ].join('\n') + '\n')

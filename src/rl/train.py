@@ -30,6 +30,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'il'))
 
+import requests as _requests
+
 from env import MinecraftRLEnv
 from metrics import RLMetrics
 from dqn import DQNAgent
@@ -41,7 +43,9 @@ from constants import MAX_STEPS, RL_BRIDGE_PORT
 def parse_args():
     p = argparse.ArgumentParser(description="DQN Minecraft woodcutting")
     p.add_argument("--episodes",      type=int,   default=120,
-                   help="Nº de episodios (~1h a 300ms/step con MAX_STEPS=100)")
+                   help="Nº de episodios (~1h a 300ms/step con MAX_STEPS=500)")
+    p.add_argument("--max-steps",    type=int,   default=MAX_STEPS,
+                   help="Máximo de steps por episodio (defecto: 500)")
     p.add_argument("--port",          type=int,   default=RL_BRIDGE_PORT)
     p.add_argument("--run-dir",       type=str,   default=None)
     p.add_argument("--eval-every",    type=int,   default=50)
@@ -54,7 +58,10 @@ def parse_args():
     p.add_argument("--batch-size",    type=int,   default=64)
     p.add_argument("--frame-stack",   type=int,   default=1,
                    help="Nº de frames apilados en la observación (defecto: 1 = sin stacking)")
-    p.add_argument("--resume",        type=str,   default=None)
+    p.add_argument("--resume",             type=str,   default=None)
+    p.add_argument("--reset-world-every",  type=int,   default=0,
+                   help="Reiniciar mundo Minecraft cada N episodios (0=desactivado). "
+                        "Requiere que el agente Node.js haya arrancado con --server-dir.")
     return p.parse_args()
 
 
@@ -79,7 +86,8 @@ def train(args):
     print(f"Obs: state_dim={STATE_DIM}  frame_stack={args.frame_stack}  "
           f"→ input={obs_dim}\n")
 
-    env     = MinecraftRLEnv(bridge_port=args.port, frame_stack=args.frame_stack)
+    env     = MinecraftRLEnv(bridge_port=args.port, frame_stack=args.frame_stack,
+                             max_steps=args.max_steps)
     metrics = RLMetrics(run_dir)
 
     agent = DQNAgent(
@@ -121,10 +129,11 @@ def train(args):
         print(f"{'─'*60}")
 
         obs, _     = env.reset()
-        ep_reward  = 0.0
-        ep_steps   = 0
-        ep_logs    = 0
-        ep_losses  = []
+        ep_reward          = 0.0
+        ep_steps           = 0
+        ep_logs_broken     = 0
+        ep_logs_collected  = 0
+        ep_losses          = []
         action_counts = {a: 0 for a in ACTIONS}
         terminated = truncated = False
 
@@ -141,37 +150,69 @@ def train(args):
             obs        = next_obs
             ep_reward += reward
             ep_steps  += 1
-            logs_this_step = sum(1 for b in info["blocks_broken"] if "log" in b)
-            ep_logs   += logs_this_step
+            broken_this_step    = sum(1 for b in info["blocks_broken"] if "log" in b)
+            collected_this_step = info.get("logs_collected", 0)
+            ep_logs_broken     += broken_this_step
+            ep_logs_collected  += collected_this_step
 
             # Verbose por step: solo eventos interesantes
-            if logs_this_step:
+            if broken_this_step:
                 print(f"  [step {ep_steps:3d}]  *** LOG ROTO ***  "
+                      f"bloques={info['blocks_broken']}  "
+                      f"reward={reward:+.2f}  total={ep_reward:+.2f}")
+            elif collected_this_step:
+                print(f"  [step {ep_steps:3d}]  LOG RECOGIDO (+{collected_this_step})  "
                       f"reward={reward:+.2f}  total={ep_reward:+.2f}")
             elif info.get("is_attacking_tree"):
-                print(f"  [step {ep_steps:3d}]  atacando árbol  "
+                block_name = info.get("attacked_block", "?")
+                print(f"  [step {ep_steps:3d}]  HIT_TREE ({block_name})  "
+                      f"reward={reward:+.2f}  total={ep_reward:+.2f}")
+            elif info.get("attacked_block"):
+                block_name = info.get("attacked_block")
+                print(f"  [step {ep_steps:3d}]  attack→{block_name} (no log)  "
                       f"reward={reward:+.2f}  total={ep_reward:+.2f}")
 
         # ── Resumen del episodio ──────────────────────────────────────────────
         ep_time    = time.time() - ep_start
         avg_loss   = sum(ep_losses) / len(ep_losses) if ep_losses else 0.0
         end_reason = "terminado" if terminated else "truncado (timeout)"
-        metrics.log_episode(ep, ep_reward, ep_steps, ep_logs,
-                            extra={"avg_loss":  round(avg_loss, 6),
-                                   "epsilon":   round(agent.epsilon, 4),
-                                   "ep_time_s": round(ep_time, 2)})
+        metrics.log_episode(ep, ep_reward, ep_steps, ep_logs_broken,
+                            extra={"avg_loss":       round(avg_loss, 6),
+                                   "epsilon":        round(agent.epsilon, 4),
+                                   "ep_time_s":      round(ep_time, 2),
+                                   "logs_collected": ep_logs_collected})
 
         print(f"\n  Fin: {end_reason}")
         print(f"  reward={ep_reward:+.4f}  steps={ep_steps}  "
-              f"logs={ep_logs}  loss={avg_loss:.4f}  tiempo={ep_time:.1f}s")
+              f"logs_rotos={ep_logs_broken}  logs_recogidos={ep_logs_collected}  "
+              f"loss={avg_loss:.4f}  tiempo={ep_time:.1f}s")
         print(f"  Acciones: " +
               "  ".join(f"{a}={n}" for a, n in action_counts.items() if n))
 
-        if ep % args.eval_every == 0:
+        # ── Checkpoint ───────────────────────────────────────────────────────────
+        # Guardar en los mismos episodios que el world_reset (o cada eval_every si no hay reset)
+        reset_n = args.reset_world_every or args.eval_every
+        if ep % reset_n == 0:
             ckpt = Path(run_dir) / f"dqn_ep{ep}.pth"
             agent.save(str(ckpt))
             metrics.plot(save=True)
             print(f"  → checkpoint guardado: {ckpt}")
+
+        # ── Reinicio de mundo ─────────────────────────────────────────────────
+        if args.reset_world_every and ep % args.reset_world_every == 0 and ep < args.episodes:
+            print(f"\n  [world_reset] Reiniciando mundo tras episodio {ep}...")
+            try:
+                r = _requests.post(
+                    f"http://localhost:{args.port}/world_reset",
+                    json={}, timeout=180
+                )
+                data = r.json()
+                if data.get("managed"):
+                    print(f"  [world_reset] OK — seed={data.get('seed', '?')}")
+                else:
+                    print(f"  [world_reset] Agente sin servidor gestionado, ignorado.")
+            except Exception as exc:
+                print(f"  [world_reset] ERROR: {exc}  (continúa sin reset)")
 
     # Checkpoint y métricas finales
     agent.save(str(Path(run_dir) / "dqn_final.pth"))

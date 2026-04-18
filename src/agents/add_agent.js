@@ -59,6 +59,16 @@ import { logInfo, logError } from './logging.js';
                 description: `Grabar screenshots y log de inferencia (sólo --type il)`,
                 default: false,
             })
+            .option(`server-dir`, {
+                type: `string`,
+                description: `Directorio del servidor Paper (sólo --type rl). Si se indica, el agente gestiona el ciclo de vida del servidor.`,
+                default: null,
+            })
+            .option(`use-seed`, {
+                type: `boolean`,
+                description: `Usar seed fija desde server/seed.txt (sólo --type rl con --server-dir)`,
+                default: false,
+            })
             .help()
             .example(`node src/agents/add_agent.js --name MyBot --type htn`, `Launch HTN agent`)
             .example(`node src/agents/add_agent.js -n TestBot -t htn -mp 25565 -vp 3000`, `Launch with custom ports`)
@@ -101,9 +111,17 @@ import { logInfo, logError } from './logging.js';
 
         // Create and start agent
         logInfo(agentName, `Starting ${agentType.toUpperCase()} agent...`);
-        const agent = (agentType === `il`)
-            ? new AgentClass(agentName, undefined, args.record)
-            : new AgentClass(agentName);
+        let agent;
+        if (agentType === `il`) {
+            agent = new AgentClass(agentName, undefined, args.record);
+        } else if (agentType === `rl`) {
+            agent = new AgentClass(agentName, undefined, {
+                serverDir: args[`server-dir`] || null,
+                useSeed:   args[`use-seed`]   || false,
+            });
+        } else {
+            agent = new AgentClass(agentName);
+        }
 
         await agent.start(settings, args[`viewer-port`]);
 

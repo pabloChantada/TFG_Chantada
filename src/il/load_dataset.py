@@ -83,7 +83,7 @@ class MinecraftDataset(Dataset):
                         float(state_dict.get("yaw",   0.0)),
                         float(state_dict.get("pitch", 0.0)),
                         float(tv) if tv is not None else 0.0,
-                        float(td) if td is not None else 0.0,
+                        float(td) if td is not None else float(STATE_BOUNDS["tree_distance"][1]),
                     ], dtype=torch.float32)
 
                     # Camera delta continuo (dyaw, dpitch en radianes)

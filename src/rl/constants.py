@@ -20,9 +20,9 @@ STATE_DIM = len(STATE_KEYS)  # 6
 # Preferimos bounds conocidos del entorno (no data-driven) para que la
 # normalización sea estable entre rebuilds del dataset.
 STATE_BOUNDS = {
-    "x":              (-1000,    1000),
-    "y":              (0,         256),
-    "z":              (-1000,    1000),
+    "x":              (-200,    200),
+    "y":              (0,       256),
+    "z":              (-200,    200),
     "yaw":            (-math.pi, math.pi),      # mineflayer → radianes
     "pitch":          (-math.pi/2, math.pi/2),   # mineflayer → radianes
     "dx":             (-1,       1),
@@ -55,14 +55,14 @@ ACTIONS = [
 CAMERA_TURN_RAD  = 0.15   # ~8.6° — más fino que 11.5°
 CAMERA_PITCH_RAD = 0.10   # vertical más pequeño
 
-REWARD_BREAK_LOG   =  10.0   # reducido: 100 era demasiado esparso para señal
-REWARD_COLLECT_LOG =   8.0   # recoger el tronco del suelo (confirma que se rompió)
-REWARD_HIT_TREE    =   0.5   # subido: es la señal más importante
-REWARD_LOOK_AT_LOG =   0.1   # subido: apuntar al árbol es el paso previo
-REWARD_APPROACH    =   0.05  # nuevo: delta de distancia negativo (acercarse)
+REWARD_BREAK_LOG   =  20.0   # romper un tronco: objetivo principal
+REWARD_COLLECT_LOG =  10.0   # recoger el tronco del suelo (señal principal)
+REWARD_HIT_TREE    =   0.5   # golpear un tronco (señal auxiliar, valor bajo)
+REWARD_LOOK_AT_LOG =   0.1   # cursor apuntando a un log (señal de alineación)
+REWARD_APPROACH    =   0.02  # acercarse al árbol visible
 REWARD_STEP        =  -0.01  # aumentado: -0.001 era demasiado pequeño para guiar
 REWARD_DONE_PENALTY = -5.0   # penalización al terminar el episodio anticipadamente
-MAX_STEPS          =  500    # más horizonte
+MAX_STEPS          =  300    # más horizonte
 CUMULATIVE_REWARD_THRESHOLD = -20.0  # terminar si reward acumulado cae por debajo
 
 # ── Bridge HTTP (Node.js ↔ Python) ────────────────────────────────────────────
