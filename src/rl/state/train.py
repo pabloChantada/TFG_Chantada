@@ -1,34 +1,34 @@
 """
-Script de entrenamiento RL — DQN — Minecraft woodcutting.
+Script de entrenamiento RL — DQN state-only — Minecraft woodcutting.
 
 Uso:
-    python src/rl/train.py [opciones]
+    python src/rl/state/train.py [opciones]
 
 Opciones:
-    --episodes N        Nº de episodios (defecto: 500)
+    --episodes N        Nº de episodios (defecto: 120)
     --port PORT         Puerto del bridge Node.js (defecto: 8766)
-    --run-dir DIR       Directorio de salida (defecto: src/rl/runs/<timestamp>)
+    --run-dir DIR       Directorio de salida (defecto: src/rl/state/runs/<timestamp>)
     --eval-every N      Guardar métricas cada N episodios (defecto: 50)
     --seed N            Semilla aleatoria (defecto: 42)
     --hidden N          Neuronas por capa oculta del DQN (defecto: 128)
     --lr LR             Learning rate (defecto: 1e-3)
     --gamma G           Factor de descuento (defecto: 0.99)
     --eps-decay N       Steps hasta epsilon mínimo (defecto: 5000)
-    --target-update N   Steps entre sync target network (defecto: 200)
+    --target-update N   Steps entre sync target network (defecto: 100)
     --batch-size N      Batch size (defecto: 64)
     --resume PATH       Cargar checkpoint previo y continuar
 """
 
-import argparse
-import signal
 import sys
-import os
+import signal
 import time
+import argparse
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'il'))
+_RL_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_RL_DIR / "shared"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import requests as _requests
 
@@ -38,14 +38,10 @@ from dqn import DQNAgent
 from constants import MAX_STEPS, RL_BRIDGE_PORT
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
 def parse_args():
-    p = argparse.ArgumentParser(description="DQN Minecraft woodcutting")
-    p.add_argument("--episodes",      type=int,   default=120,
-                   help="Nº de episodios (~1h a 300ms/step con MAX_STEPS=500)")
-    p.add_argument("--max-steps",    type=int,   default=MAX_STEPS,
-                   help="Máximo de steps por episodio (defecto: 500)")
+    p = argparse.ArgumentParser(description="DQN state-only — Minecraft woodcutting")
+    p.add_argument("--episodes",      type=int,   default=120)
+    p.add_argument("--max-steps",     type=int,   default=MAX_STEPS)
     p.add_argument("--port",          type=int,   default=RL_BRIDGE_PORT)
     p.add_argument("--run-dir",       type=str,   default=None)
     p.add_argument("--eval-every",    type=int,   default=50)
@@ -56,27 +52,22 @@ def parse_args():
     p.add_argument("--eps-decay",     type=int,   default=5_000)
     p.add_argument("--target-update", type=int,   default=100)
     p.add_argument("--batch-size",    type=int,   default=64)
-    p.add_argument("--frame-stack",   type=int,   default=1,
-                   help="Nº de frames apilados en la observación (defecto: 1 = sin stacking)")
-    p.add_argument("--resume",             type=str,   default=None)
-    p.add_argument("--reset-world-every",  type=int,   default=0,
-                   help="Reiniciar mundo Minecraft cada N episodios (0=desactivado). "
-                        "Requiere que el agente Node.js haya arrancado con --server-dir.")
+    p.add_argument("--frame-stack",   type=int,   default=1)
+    p.add_argument("--resume",             type=str, default=None)
+    p.add_argument("--reset-world-every",  type=int, default=0)
     return p.parse_args()
 
 
-def make_run_dir(base: str = "src/rl/runs") -> str:
+def make_run_dir() -> str:
     ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    d  = Path(base) / ts
+    d  = _RL_DIR / "state" / "runs" / ts
     d.mkdir(parents=True, exist_ok=True)
     return str(d)
 
 
-# ── Loop de entrenamiento ─────────────────────────────────────────────────────
-
 def train(args):
     run_dir = args.run_dir or make_run_dir()
-    from constants import STATE_DIM
+    from constants import STATE_DIM, ACTIONS, STATE_KEYS
     obs_dim = STATE_DIM * args.frame_stack
 
     print(f"Run dir:  {run_dir}")
@@ -89,8 +80,7 @@ def train(args):
     env     = MinecraftRLEnv(bridge_port=args.port, frame_stack=args.frame_stack,
                              max_steps=args.max_steps)
     metrics = RLMetrics(run_dir)
-
-    agent = DQNAgent(
+    agent   = DQNAgent(
         state_dim     = obs_dim,
         hidden        = args.hidden,
         lr            = args.lr,
@@ -114,27 +104,24 @@ def train(args):
     signal.signal(signal.SIGINT,  _save_and_exit)
     signal.signal(signal.SIGTERM, _save_and_exit)
 
-    from constants import ACTIONS
-
     train_start = time.time()
 
     for ep in range(1, args.episodes + 1):
-        ep_start = time.time()
+        ep_start      = time.time()
         elapsed_total = ep_start - train_start
 
         print(f"\n{'─'*60}")
         print(f"  Episodio {ep}/{args.episodes}  |  eps={agent.epsilon:.3f}  "
-              f"buffer={len(agent.buffer)}  "
-              f"elapsed={elapsed_total/60:.1f}min")
+              f"buffer={len(agent.buffer)}  elapsed={elapsed_total/60:.1f}min")
         print(f"{'─'*60}")
 
-        obs, _     = env.reset()
-        ep_reward          = 0.0
-        ep_steps           = 0
-        ep_logs_broken     = 0
-        ep_logs_collected  = 0
-        ep_losses          = []
-        action_counts = {a: 0 for a in ACTIONS}
+        obs, _            = env.reset()
+        ep_reward         = 0.0
+        ep_steps          = 0
+        ep_logs_broken    = 0
+        ep_logs_collected = 0
+        ep_losses         = []
+        action_counts     = {a: 0 for a in ACTIONS}
         terminated = truncated = False
 
         while not (terminated or truncated):
@@ -150,12 +137,17 @@ def train(args):
             obs        = next_obs
             ep_reward += reward
             ep_steps  += 1
+
             broken_this_step    = sum(1 for b in info["blocks_broken"] if "log" in b)
             collected_this_step = info.get("logs_collected", 0)
             ep_logs_broken     += broken_this_step
             ep_logs_collected  += collected_this_step
 
-            # Verbose por step: solo eventos interesantes
+            # State en cada step
+            cur_state = next_obs[-STATE_DIM:]
+            state_str = "  ".join(f"{k}={v:+.2f}" for k, v in zip(STATE_KEYS, cur_state))
+            print(f"  [step {ep_steps:3d}]  state: {state_str}  action={info['action_name']}")
+
             if broken_this_step:
                 print(f"  [step {ep_steps:3d}]  *** LOG ROTO ***  "
                       f"bloques={info['blocks_broken']}  "
@@ -164,15 +156,12 @@ def train(args):
                 print(f"  [step {ep_steps:3d}]  LOG RECOGIDO (+{collected_this_step})  "
                       f"reward={reward:+.2f}  total={ep_reward:+.2f}")
             elif info.get("is_attacking_tree"):
-                block_name = info.get("attacked_block", "?")
-                print(f"  [step {ep_steps:3d}]  HIT_TREE ({block_name})  "
+                print(f"  [step {ep_steps:3d}]  HIT_TREE ({info.get('attacked_block', '?')})  "
                       f"reward={reward:+.2f}  total={ep_reward:+.2f}")
             elif info.get("attacked_block"):
-                block_name = info.get("attacked_block")
-                print(f"  [step {ep_steps:3d}]  attack→{block_name} (no log)  "
+                print(f"  [step {ep_steps:3d}]  attack→{info['attacked_block']} (no log)  "
                       f"reward={reward:+.2f}  total={ep_reward:+.2f}")
 
-        # ── Resumen del episodio ──────────────────────────────────────────────
         ep_time    = time.time() - ep_start
         avg_loss   = sum(ep_losses) / len(ep_losses) if ep_losses else 0.0
         end_reason = "terminado" if terminated else "truncado (timeout)"
@@ -186,11 +175,8 @@ def train(args):
         print(f"  reward={ep_reward:+.4f}  steps={ep_steps}  "
               f"logs_rotos={ep_logs_broken}  logs_recogidos={ep_logs_collected}  "
               f"loss={avg_loss:.4f}  tiempo={ep_time:.1f}s")
-        print(f"  Acciones: " +
-              "  ".join(f"{a}={n}" for a, n in action_counts.items() if n))
+        print(f"  Acciones: " + "  ".join(f"{a}={n}" for a, n in action_counts.items() if n))
 
-        # ── Checkpoint ───────────────────────────────────────────────────────────
-        # Guardar en los mismos episodios que el world_reset (o cada eval_every si no hay reset)
         reset_n = args.reset_world_every or args.eval_every
         if ep % reset_n == 0:
             ckpt = Path(run_dir) / f"dqn_ep{ep}.pth"
@@ -198,14 +184,11 @@ def train(args):
             metrics.plot(save=True)
             print(f"  → checkpoint guardado: {ckpt}")
 
-        # ── Reinicio de mundo ─────────────────────────────────────────────────
         if args.reset_world_every and ep % args.reset_world_every == 0 and ep < args.episodes:
             print(f"\n  [world_reset] Reiniciando mundo tras episodio {ep}...")
             try:
-                r = _requests.post(
-                    f"http://localhost:{args.port}/world_reset",
-                    json={}, timeout=180
-                )
+                r    = _requests.post(f"http://localhost:{args.port}/world_reset",
+                                      json={}, timeout=180)
                 data = r.json()
                 if data.get("managed"):
                     print(f"  [world_reset] OK — seed={data.get('seed', '?')}")
@@ -214,7 +197,6 @@ def train(args):
             except Exception as exc:
                 print(f"  [world_reset] ERROR: {exc}  (continúa sin reset)")
 
-    # Checkpoint y métricas finales
     agent.save(str(Path(run_dir) / "dqn_final.pth"))
     metrics.plot(save=True)
     env.close()

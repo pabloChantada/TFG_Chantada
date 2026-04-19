@@ -48,8 +48,8 @@ ACTIONS = [
     "move_forward_jump",
     "camera_right",
     "camera_left",
-    "camera_up",      # nuevo
-    "camera_down",    # nuevo
+    "camera_up",      
+    "camera_down",    
 ]
 
 CAMERA_TURN_RAD  = 0.15   # ~8.6° — más fino que 11.5°
@@ -58,8 +58,8 @@ CAMERA_PITCH_RAD = 0.10   # vertical más pequeño
 REWARD_BREAK_LOG   =  20.0   # romper un tronco: objetivo principal
 REWARD_COLLECT_LOG =  10.0   # recoger el tronco del suelo (señal principal)
 REWARD_HIT_TREE    =   0.5   # golpear un tronco (señal auxiliar, valor bajo)
-REWARD_LOOK_AT_LOG =   0.1   # cursor apuntando a un log (señal de alineación)
-REWARD_APPROACH    =   0.02  # acercarse al árbol visible
+REWARD_LOOK_AT_LOG =   0.0   # cursor apuntando a un log (señal de alineación)
+REWARD_APPROACH    =   0.0  # acercarse al árbol visible
 REWARD_STEP        =  -0.01  # aumentado: -0.001 era demasiado pequeño para guiar
 REWARD_DONE_PENALTY = -5.0   # penalización al terminar el episodio anticipadamente
 MAX_STEPS          =  300    # más horizonte

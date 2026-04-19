@@ -164,12 +164,14 @@ export class RLAgent extends BaseAgent {
         this._useSeed    = useSeed
         this._mcServer   = null   // proceso del servidor Paper
         this._settings   = null   // guardado para reconexión
+        this._viewerPort = null   // guardado para re-inicializar tras world reset
     }
 
     // ── Inicio ────────────────────────────────────────────────────────────────
 
     async start(settings, viewerPort) {
-        this._settings = settings
+        this._settings   = settings
+        this._viewerPort = viewerPort || null
         try {
             if (this._serverDir) {
                 await validateSetup(this._serverDir)
@@ -321,6 +323,9 @@ export class RLAgent extends BaseAgent {
         }
 
         logInfo(this.name, 'World reset: parando servidor...')
+        if (this._viewerPort) {
+            try { this.bot.viewer?.close() } catch (_) {}
+        }
         this.bot.end()
 
         await stopServer(this._mcServer)
@@ -336,6 +341,9 @@ export class RLAgent extends BaseAgent {
         logInfo(this.name, `Nuevo mundo listo (seed=${seed}). Reconectando bot...`)
 
         await this._connectAndSetup()
+        if (this._viewerPort) {
+            await this.setupViewer(this._viewerPort)
+        }
         logInfo(this.name, 'World reset completado')
         return { ok: true, managed: true, seed: String(seed) }
     }
