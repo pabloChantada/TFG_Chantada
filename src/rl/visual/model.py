@@ -39,15 +39,19 @@ class CNNExtractor(nn.Module):
         super().__init__()
         self.feat_dim = feat_dim
 
+        # GroupNorm (en vez de BatchNorm): no mantiene estadísticas globales,
+        # así q_net y target_net producen los mismos valores para la misma entrada
+        # una vez sincronizados los pesos. BatchNorm en DQN introduce desfase
+        # entre ambas redes y es una fuente conocida de inestabilidad.
         self.cnn = nn.Sequential(
             # 128 → 64
-            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.BatchNorm2d(32), nn.ReLU(),
+            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.GroupNorm(8, 32), nn.ReLU(),
             nn.MaxPool2d(2),
             # 64 → 32
-            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.GroupNorm(8, 64), nn.ReLU(),
             nn.MaxPool2d(2),
             # 32 → 16
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.BatchNorm2d(128), nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.GroupNorm(8, 128), nn.ReLU(),
             nn.MaxPool2d(2),
         )
 

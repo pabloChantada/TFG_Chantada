@@ -80,10 +80,11 @@ class VisualDQNAgent:
         gamma:         float = 0.99,
         eps_start:     float = 1.0,
         eps_end:       float = 0.05,
-        eps_decay:     int   = 10_000,
-        target_update: int   = 200,
-        batch_size:    int   = 32,
-        buffer_size:   int   = 20_000,
+        eps_decay:     int   = 150_000,
+        target_update: int   = 2_500,
+        batch_size:    int   = 64,
+        buffer_size:   int   = 100_000,
+        warmup_steps:  int   = 5_000,
     ):
         self.n_actions     = n_actions
         self.use_state     = use_state
@@ -93,6 +94,7 @@ class VisualDQNAgent:
         self.eps_decay     = eps_decay
         self.target_update = target_update
         self.batch_size    = batch_size
+        self.warmup_steps  = warmup_steps
         self.device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.q_net      = VisualQNetwork(feat_dim, state_dim, n_actions, hidden, img_size, use_state).to(self.device)
@@ -142,7 +144,8 @@ class VisualDQNAgent:
         if self._step % self.target_update == 0:
             self.target_net.load_state_dict(self.q_net.state_dict())
 
-        if len(self.buffer) < self.batch_size:
+        # Warmup: acumular experiencia diversa antes de empezar a entrenar.
+        if len(self.buffer) < max(self.batch_size, self.warmup_steps):
             return None
 
         return self._train_batch()
@@ -164,9 +167,12 @@ class VisualDQNAgent:
 
         q_values = self.q_net(imgs, s).gather(1, actions.unsqueeze(1)).squeeze(1)
 
+        # Double-DQN: argmax con red online, valor con target → reduce el sesgo
+        # de sobreestimación (responsable de la divergencia de Q-values).
         with torch.no_grad():
-            next_q   = self.target_net(next_imgs, next_s).max(dim=1).values
-            q_target = rewards + self.gamma * next_q * (1.0 - dones)
+            next_actions = self.q_net(next_imgs, next_s).argmax(dim=1, keepdim=True)
+            next_q       = self.target_net(next_imgs, next_s).gather(1, next_actions).squeeze(1)
+            q_target     = rewards + self.gamma * next_q * (1.0 - dones)
 
         loss = F.mse_loss(q_values, q_target)
         self.optimizer.zero_grad()

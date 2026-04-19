@@ -12,9 +12,11 @@ Opciones:
     --hidden N          Neuronas MLP del Q-network (defecto: 256)
     --lr LR             Learning rate (defecto: 1e-4)
     --gamma G           Factor de descuento (defecto: 0.99)
-    --eps-decay N       Steps hasta epsilon mínimo (defecto: 10000)
-    --target-update N   Steps entre sync target network (defecto: 200)
-    --batch-size N      Batch size (defecto: 32)
+    --eps-decay N       Steps hasta epsilon mínimo (defecto: 150000)
+    --target-update N   Steps entre sync target network (defecto: 2500)
+    --batch-size N      Batch size (defecto: 64)
+    --buffer-size N     Tamaño del replay buffer (defecto: 100000)
+    --warmup N          Steps mínimos antes de empezar a entrenar (defecto: 5000)
     --resume PATH       Cargar checkpoint previo y continuar
 """
 
@@ -48,9 +50,11 @@ def parse_args():
     p.add_argument("--hidden",        type=int,   default=256)
     p.add_argument("--lr",            type=float, default=1e-4)
     p.add_argument("--gamma",         type=float, default=0.99)
-    p.add_argument("--eps-decay",     type=int,   default=10_000)
-    p.add_argument("--target-update", type=int,   default=200)
-    p.add_argument("--batch-size",    type=int,   default=32)
+    p.add_argument("--eps-decay",     type=int,   default=150_000)
+    p.add_argument("--target-update", type=int,   default=2_500)
+    p.add_argument("--batch-size",    type=int,   default=64)
+    p.add_argument("--buffer-size",   type=int,   default=100_000)
+    p.add_argument("--warmup",        type=int,   default=5_000)
     p.add_argument("--no-state",           action="store_true",
                    help="Usar solo imagen, sin fusionar vector de estado")
     p.add_argument("--resume",             type=str, default=None)
@@ -72,7 +76,8 @@ def train(args):
     print(f"Episodes: {args.episodes}  |  bridge: localhost:{args.port}")
     print(f"DQN visual: feat_dim={args.feat_dim}  hidden={args.hidden}  "
           f"lr={args.lr}  gamma={args.gamma}  "
-          f"eps_decay={args.eps_decay}  target_update={args.target_update}\n")
+          f"eps_decay={args.eps_decay}  target_update={args.target_update}  "
+          f"batch={args.batch_size}  buffer={args.buffer_size}  warmup={args.warmup}\n")
 
     env     = MinecraftRLEnv(bridge_port=args.port, use_visual=True,
                              max_steps=args.max_steps)
@@ -89,6 +94,8 @@ def train(args):
         eps_decay     = args.eps_decay,
         target_update = args.target_update,
         batch_size    = args.batch_size,
+        buffer_size   = args.buffer_size,
+        warmup_steps  = args.warmup,
     )
 
     if args.resume:
