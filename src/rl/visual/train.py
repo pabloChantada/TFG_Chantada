@@ -17,9 +17,13 @@ Opciones:
     --batch-size N      Batch size (defecto: 64)
     --buffer-size N     Tamaño del replay buffer (defecto: 100000)
     --warmup N          Steps mínimos antes de empezar a entrenar (defecto: 5000)
+    --reward-clip V     Clip de reward a [-V, +V] para estabilidad (defecto: 1.0)
+    --no-reward-clip    Desactivar reward clipping
+    --img-frame-stack K Apilar los últimos K frames en el eje de canales (defecto: 4)
     --resume PATH       Cargar checkpoint previo y continuar
 """
 
+import json
 import sys
 import signal
 import time
@@ -55,6 +59,12 @@ def parse_args():
     p.add_argument("--batch-size",    type=int,   default=64)
     p.add_argument("--buffer-size",   type=int,   default=100_000)
     p.add_argument("--warmup",        type=int,   default=5_000)
+    p.add_argument("--reward-clip",   type=float, default=1.0,
+                   help="Clip de reward a [-V, +V] para estabilidad (0 o --no-reward-clip lo desactiva)")
+    p.add_argument("--no-reward-clip", dest="reward_clip", action="store_const", const=None,
+                   help="Desactivar reward clipping")
+    p.add_argument("--img-frame-stack", type=int, default=4,
+                   help="Apilar los últimos K frames en el eje de canales (defecto: 4)")
     p.add_argument("--no-state",           action="store_true",
                    help="Usar solo imagen, sin fusionar vector de estado")
     p.add_argument("--resume",             type=str, default=None)
@@ -72,14 +82,78 @@ def make_run_dir() -> str:
 def train(args):
     run_dir = args.run_dir or make_run_dir()
 
+    import subprocess
+    import torch as _torch
+    from constants import (
+        ACTIONS, STATE_KEYS, STATE_DIM, IMG_SIZE,
+        CAMERA_TURN_RAD, CAMERA_PITCH_RAD,
+        REWARD_BREAK_LOG, REWARD_COLLECT_LOG, REWARD_HIT_TREE,
+        REWARD_LOOK_AT_LOG, REWARD_APPROACH, REWARD_STEP,
+        REWARD_DONE_PENALTY, MAX_STEPS, CUMULATIVE_REWARD_THRESHOLD,
+    )
+
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        git_commit = "unknown"
+
+    cfg = {
+        "meta": {
+            "timestamp":  datetime.now().isoformat(timespec="seconds"),
+            "git_commit": git_commit,
+            "torch":      _torch.__version__,
+            "device":     "cuda" if _torch.cuda.is_available() else "cpu",
+        },
+        "train": vars(args),
+        "architecture": {
+            "type":             "Double-DQN",
+            "img_size":         IMG_SIZE,
+            "img_frame_stack":  args.img_frame_stack,
+            "img_channels":     3 * args.img_frame_stack,
+            "feat_dim":         args.feat_dim,
+            "hidden":           args.hidden,
+            "use_state":        not args.no_state,
+            "state_dim":        STATE_DIM,
+            "state_keys":       STATE_KEYS,
+            "n_actions":        len(ACTIONS),
+            "actions":          ACTIONS,
+            "cnn_channels":     [3 * args.img_frame_stack, 32, 64, 128],
+            "norm":             "GroupNorm(8)",
+            "pooling":          "MaxPool2d(2)x3",
+            "fusion":           "sum(img_feat, state_proj)" if not args.no_state else "img_feat only",
+            "grad_clip":        10.0,
+            "optimizer":        "Adam",
+        },
+        "env": {
+            "max_steps":                  MAX_STEPS,
+            "cumulative_reward_threshold": CUMULATIVE_REWARD_THRESHOLD,
+            "camera_turn_rad":            CAMERA_TURN_RAD,
+            "camera_pitch_rad":           CAMERA_PITCH_RAD,
+        },
+        "rewards": {
+            "break_log":    REWARD_BREAK_LOG,
+            "collect_log":  REWARD_COLLECT_LOG,
+            "hit_tree":     REWARD_HIT_TREE,
+            "look_at_log":  REWARD_LOOK_AT_LOG,
+            "approach":     REWARD_APPROACH,
+            "step":         REWARD_STEP,
+            "done_penalty": REWARD_DONE_PENALTY,
+        },
+    }
+    Path(run_dir, "config.json").write_text(json.dumps(cfg, indent=2))
+
     print(f"Run dir:  {run_dir}")
     print(f"Episodes: {args.episodes}  |  bridge: localhost:{args.port}")
     print(f"DQN visual: feat_dim={args.feat_dim}  hidden={args.hidden}  "
           f"lr={args.lr}  gamma={args.gamma}  "
           f"eps_decay={args.eps_decay}  target_update={args.target_update}  "
-          f"batch={args.batch_size}  buffer={args.buffer_size}  warmup={args.warmup}\n")
+          f"batch={args.batch_size}  buffer={args.buffer_size}  warmup={args.warmup}  "
+          f"reward_clip={args.reward_clip}  img_frame_stack={args.img_frame_stack}\n")
 
     env     = MinecraftRLEnv(bridge_port=args.port, use_visual=True,
+                             img_frame_stack=args.img_frame_stack,
                              max_steps=args.max_steps)
     metrics = RLMetrics(run_dir)
     use_state = not args.no_state
@@ -96,6 +170,8 @@ def train(args):
         batch_size    = args.batch_size,
         buffer_size   = args.buffer_size,
         warmup_steps  = args.warmup,
+        reward_clip   = args.reward_clip,
+        img_channels  = 3 * args.img_frame_stack,
     )
 
     if args.resume:

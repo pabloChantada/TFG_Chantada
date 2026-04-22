@@ -85,6 +85,8 @@ class VisualDQNAgent:
         batch_size:    int   = 64,
         buffer_size:   int   = 100_000,
         warmup_steps:  int   = 5_000,
+        reward_clip:   float | None = 1.0,
+        img_channels:  int   = 3,
     ):
         self.n_actions     = n_actions
         self.use_state     = use_state
@@ -95,10 +97,12 @@ class VisualDQNAgent:
         self.target_update = target_update
         self.batch_size    = batch_size
         self.warmup_steps  = warmup_steps
+        self.reward_clip   = reward_clip
+        self.img_channels  = img_channels
         self.device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.q_net      = VisualQNetwork(feat_dim, state_dim, n_actions, hidden, img_size, use_state).to(self.device)
-        self.target_net = VisualQNetwork(feat_dim, state_dim, n_actions, hidden, img_size, use_state).to(self.device)
+        self.q_net      = VisualQNetwork(feat_dim, state_dim, n_actions, hidden, img_size, use_state, in_channels=img_channels).to(self.device)
+        self.target_net = VisualQNetwork(feat_dim, state_dim, n_actions, hidden, img_size, use_state, in_channels=img_channels).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
@@ -138,7 +142,13 @@ class VisualDQNAgent:
         img      = np.array(img,      dtype=np.float32) / 255.0 if img.max() > 1.0 else np.array(img,      dtype=np.float32)
         next_img = np.array(next_img, dtype=np.float32) / 255.0 if next_img.max() > 1.0 else np.array(next_img, dtype=np.float32)
 
-        self.buffer.push(img, state, action, reward, next_img, next_state, done)
+        # Reward clipping: acota los Q-targets para evitar divergencia.
+        # Sólo afecta al aprendizaje; las métricas siguen usando el reward original.
+        train_reward = reward
+        if self.reward_clip is not None:
+            train_reward = max(-self.reward_clip, min(self.reward_clip, reward))
+
+        self.buffer.push(img, state, action, train_reward, next_img, next_state, done)
         self._step += 1
 
         if self._step % self.target_update == 0:
@@ -184,9 +194,10 @@ class VisualDQNAgent:
 
     def save(self, path: str):
         torch.save({
-            "q_net":   self.q_net.state_dict(),
-            "step":    self._step,
-            "epsilon": self.epsilon,
+            "q_net":        self.q_net.state_dict(),
+            "step":         self._step,
+            "epsilon":      self.epsilon,
+            "img_channels": self.img_channels,
         }, path)
 
     def load(self, path: str):

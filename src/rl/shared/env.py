@@ -10,7 +10,7 @@ Espacio de observaciones (use_visual=False, por defecto):
 Espacio de observaciones (use_visual=True):
     Dict {
         "state": Box(-1, 1, (STATE_DIM,))
-        "image": Box(0, 255, (3, IMG_SIZE, IMG_SIZE))
+        "image": Box(0, 255, (3 * img_frame_stack, IMG_SIZE, IMG_SIZE))
     }
 
 Espacio de acciones:
@@ -79,27 +79,30 @@ class MinecraftRLEnv(gym.Env):
 
     def __init__(
         self,
-        bridge_port: int = RL_BRIDGE_PORT,
-        use_visual:  bool = False,
-        frame_stack: int  = 1,
-        render_mode: str | None = None,
-        max_steps:   int  = MAX_STEPS,
+        bridge_port:     int = RL_BRIDGE_PORT,
+        use_visual:      bool = False,
+        frame_stack:     int  = 1,
+        img_frame_stack: int  = 1,
+        render_mode:     str | None = None,
+        max_steps:       int  = MAX_STEPS,
     ):
         super().__init__()
-        self.bridge_url  = f"http://localhost:{bridge_port}"
-        self.use_visual  = use_visual
-        self.frame_stack = max(1, frame_stack)
-        self.render_mode = render_mode
-        self._max_steps  = max_steps
+        self.bridge_url      = f"http://localhost:{bridge_port}"
+        self.use_visual      = use_visual
+        self.frame_stack     = max(1, frame_stack)
+        self.img_frame_stack = max(1, img_frame_stack)
+        self.render_mode     = render_mode
+        self._max_steps      = max_steps
 
         # ── Espacio de observaciones ──────────────────────────────────────────
         obs_dim     = STATE_DIM * self.frame_stack
         state_space = spaces.Box(-1.0, 1.0, shape=(obs_dim,), dtype=np.float32)
 
         if use_visual:
+            img_channels = 3 * self.img_frame_stack
             self.observation_space = spaces.Dict({
                 "state": state_space,
-                "image": spaces.Box(0, 255, shape=(3, IMG_SIZE, IMG_SIZE), dtype=np.uint8),
+                "image": spaces.Box(0, 255, shape=(img_channels, IMG_SIZE, IMG_SIZE), dtype=np.uint8),
             })
         else:
             self.observation_space = state_space
@@ -114,6 +117,7 @@ class MinecraftRLEnv(gym.Env):
         self._prev_log_count: int = 0
         self._last_render_frame: np.ndarray | None = None
         self._frame_buffer: list[np.ndarray] = []
+        self._img_frame_buffer: list[np.ndarray] = []
         # Shaping: is_looking_at_log
         self._last_is_looking_at_log: float = 0.0
         # Shaping: distancia al árbol (para reward de acercamiento)
@@ -133,6 +137,7 @@ class MinecraftRLEnv(gym.Env):
         self._prev_pos          = None
         self._prev_log_count    = 0
         self._frame_buffer      = []
+        self._img_frame_buffer  = []
         self._last_is_looking_at_log = 0.0
         self._prev_tree_distance = 0.0
         self._last_tree_distance = 0.0
@@ -294,7 +299,20 @@ class MinecraftRLEnv(gym.Env):
             img_arr = np.zeros((3, IMG_SIZE, IMG_SIZE), dtype=np.uint8)
 
         self._last_render_frame = img_arr.transpose(1, 2, 0)
-        return {"state": state_vec, "image": img_arr}
+
+        # Frame stacking visual: concatenamos los últimos k frames en el eje de canales.
+        # El DQN vanilla no puede inferir movimiento desde un único frame; stack de k=4
+        # es el truco estándar de Atari (Mnih 2015) para expresar velocidades.
+        self._img_frame_buffer.append(img_arr)
+        if len(self._img_frame_buffer) > self.img_frame_stack:
+            self._img_frame_buffer.pop(0)
+        pad = self.img_frame_stack - len(self._img_frame_buffer)
+        stacked_img = np.concatenate(
+            [self._img_frame_buffer[0]] * pad + self._img_frame_buffer,
+            axis=0,
+        )
+
+        return {"state": state_vec, "image": stacked_img}
 
     # ── HTTP ──────────────────────────────────────────────────────────────────
 

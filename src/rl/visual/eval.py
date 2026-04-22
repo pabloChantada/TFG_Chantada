@@ -35,14 +35,17 @@ def parse_args():
 
 
 def load_model(checkpoint_path: str, feat_dim: int, hidden: int, use_state: bool):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net    = VisualQNetwork(feat_dim=feat_dim, hidden=hidden, use_state=use_state)
-    ckpt   = torch.load(checkpoint_path, map_location=device)
+    device       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt         = torch.load(checkpoint_path, map_location=device)
+    img_channels = ckpt.get("img_channels", 3)
+    net          = VisualQNetwork(feat_dim=feat_dim, hidden=hidden,
+                                  use_state=use_state, in_channels=img_channels)
     net.load_state_dict(ckpt["q_net"])
     net.to(device).eval()
     print(f"Checkpoint cargado: {checkpoint_path}")
-    print(f"  step={ckpt.get('step', '?')}  epsilon_entrenamiento={ckpt.get('epsilon', '?'):.4f}")
-    return net, device
+    print(f"  step={ckpt.get('step', '?')}  epsilon_entrenamiento={ckpt.get('epsilon', '?'):.4f}"
+          f"  img_channels={img_channels}")
+    return net, device, img_channels
 
 
 @torch.no_grad()
@@ -57,9 +60,10 @@ def select_action(net: VisualQNetwork, obs: dict, device) -> int:
 
 
 def run_eval(args):
-    use_state    = not args.no_state
-    net, device  = load_model(args.checkpoint, args.feat_dim, args.hidden, use_state)
-    env          = MinecraftRLEnv(bridge_port=args.port, use_visual=True)
+    use_state   = not args.no_state
+    net, device, img_channels = load_model(args.checkpoint, args.feat_dim, args.hidden, use_state)
+    env         = MinecraftRLEnv(bridge_port=args.port, use_visual=True,
+                                 img_frame_stack=img_channels // 3)
 
     total_rewards, total_logs = [], []
 

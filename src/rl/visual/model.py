@@ -27,17 +27,19 @@ N_ACTIONS = len(ACTIONS)
 
 class CNNExtractor(nn.Module):
     """
-    CNN ligera para extraer features de un frame RGB.
+    CNN ligera para extraer features de frames RGB (opcionalmente apilados).
 
-    Entrada : (N, 3, H, W)
+    Entrada : (N, in_channels, H, W)  — in_channels = 3 * img_frame_stack
     Salida  : (N, feat_dim)
 
     3 bloques Conv→BN→ReLU→MaxPool reducen 128×128 → 16×16.
     """
 
-    def __init__(self, img_size: int = IMG_SIZE, feat_dim: int = 256):
+    def __init__(self, img_size: int = IMG_SIZE, feat_dim: int = 256,
+                 in_channels: int = 3):
         super().__init__()
-        self.feat_dim = feat_dim
+        self.feat_dim    = feat_dim
+        self.in_channels = in_channels
 
         # GroupNorm (en vez de BatchNorm): no mantiene estadísticas globales,
         # así q_net y target_net producen los mismos valores para la misma entrada
@@ -45,7 +47,7 @@ class CNNExtractor(nn.Module):
         # entre ambas redes y es una fuente conocida de inestabilidad.
         self.cnn = nn.Sequential(
             # 128 → 64
-            nn.Conv2d(3, 32, kernel_size=3, padding=1), nn.GroupNorm(8, 32), nn.ReLU(),
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1), nn.GroupNorm(8, 32), nn.ReLU(),
             nn.MaxPool2d(2),
             # 64 → 32
             nn.Conv2d(32, 64, kernel_size=3, padding=1), nn.GroupNorm(8, 64), nn.ReLU(),
@@ -60,7 +62,7 @@ class CNNExtractor(nn.Module):
         self.proj = nn.Linear(flat_dim, feat_dim)
 
     def forward(self, imgs: torch.Tensor) -> torch.Tensor:
-        """imgs: (N, 3, H, W) → (N, feat_dim)"""
+        """imgs: (N, in_channels, H, W) → (N, feat_dim)"""
         x = self.cnn(imgs)
         x = x.flatten(1)
         return self.proj(x)
@@ -76,10 +78,12 @@ class VisualQNetwork(nn.Module):
 
     def __init__(self, feat_dim: int = 256, state_dim: int = STATE_DIM,
                  n_actions: int = N_ACTIONS, hidden: int = 256,
-                 img_size: int = IMG_SIZE, use_state: bool = True):
+                 img_size: int = IMG_SIZE, use_state: bool = True,
+                 in_channels: int = 3):
         super().__init__()
         self.use_state  = use_state
-        self.extractor  = CNNExtractor(img_size=img_size, feat_dim=feat_dim)
+        self.extractor  = CNNExtractor(img_size=img_size, feat_dim=feat_dim,
+                                       in_channels=in_channels)
         self.state_proj = nn.Linear(state_dim, feat_dim) if use_state else None
 
         self.mlp = nn.Sequential(
@@ -92,7 +96,7 @@ class VisualQNetwork(nn.Module):
     def forward(self, imgs: torch.Tensor,
                 states: torch.Tensor | None = None) -> torch.Tensor:
         """
-        imgs   : (N, 3, H, W)
+        imgs   : (N, in_channels, H, W)
         states : (N, STATE_DIM)  — ignorado si use_state=False
         → Q    : (N, N_ACTIONS)
         """

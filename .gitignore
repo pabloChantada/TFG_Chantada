@@ -115,6 +115,16 @@ icons/
 plots/
 data/recordings/
 
+# Runs RL: incluir json y png (las negaciones deben ir después de runs/)
+!src/rl/runs/
+!src/rl/runs/**/
+!src/rl/runs/**/*.json
+!src/rl/runs/**/*.png
+!src/rl/visual/runs/
+!src/rl/visual/runs/**/
+!src/rl/visual/runs/**/*.json
+!src/rl/visual/runs/**/*.png
+
 # Paper server
 server/
 train_balanced.jsonl
