@@ -61,7 +61,10 @@ REWARD_HIT_TREE    =   0.5   # golpear un tronco (señal auxiliar, valor bajo)
 REWARD_LOOK_AT_LOG =   0.0   # cursor apuntando a un log (señal de alineación)
 REWARD_APPROACH    =   0.0  # acercarse al árbol visible
 REWARD_STEP        =  -0.01  # aumentado: -0.001 era demasiado pequeño para guiar
+REWARD_WRONG_BLOCK =  -0.01  # penalización por atacar un bloque que no es tronco
 REWARD_DONE_PENALTY = -5.0   # penalización al terminar el episodio anticipadamente
+REWARD_SUCCESS     =  30.0   # bono al cumplir la condición de éxito (1 tronco recogido)
+LOGS_TO_SUCCESS    =   1     # nº de troncos recogidos que termina el episodio con éxito
 MAX_STEPS          =  300    # más horizonte
 CUMULATIVE_REWARD_THRESHOLD = -20.0  # terminar si reward acumulado cae por debajo
 

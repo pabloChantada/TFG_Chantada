@@ -54,11 +54,11 @@ def parse_args():
     p.add_argument("--hidden",        type=int,   default=256)
     p.add_argument("--lr",            type=float, default=1e-4)
     p.add_argument("--gamma",         type=float, default=0.99)
-    p.add_argument("--eps-decay",     type=int,   default=150_000)
+    p.add_argument("--eps-decay",     type=int,   default=100_000)
     p.add_argument("--target-update", type=int,   default=2_500)
     p.add_argument("--batch-size",    type=int,   default=64)
     p.add_argument("--buffer-size",   type=int,   default=100_000)
-    p.add_argument("--warmup",        type=int,   default=5_000)
+    p.add_argument("--warmup",        type=int,   default=3_000)
     p.add_argument("--reward-clip",   type=float, default=1.0,
                    help="Clip de reward a [-V, +V] para estabilidad (0 o --no-reward-clip lo desactiva)")
     p.add_argument("--no-reward-clip", dest="reward_clip", action="store_const", const=None,
@@ -89,7 +89,9 @@ def train(args):
         CAMERA_TURN_RAD, CAMERA_PITCH_RAD,
         REWARD_BREAK_LOG, REWARD_COLLECT_LOG, REWARD_HIT_TREE,
         REWARD_LOOK_AT_LOG, REWARD_APPROACH, REWARD_STEP,
-        REWARD_DONE_PENALTY, MAX_STEPS, CUMULATIVE_REWARD_THRESHOLD,
+        REWARD_WRONG_BLOCK,
+        REWARD_DONE_PENALTY, REWARD_SUCCESS, LOGS_TO_SUCCESS,
+        MAX_STEPS, CUMULATIVE_REWARD_THRESHOLD,
     )
 
     try:
@@ -129,6 +131,7 @@ def train(args):
         "env": {
             "max_steps":                  MAX_STEPS,
             "cumulative_reward_threshold": CUMULATIVE_REWARD_THRESHOLD,
+            "logs_to_success":            LOGS_TO_SUCCESS,
             "camera_turn_rad":            CAMERA_TURN_RAD,
             "camera_pitch_rad":           CAMERA_PITCH_RAD,
         },
@@ -139,7 +142,9 @@ def train(args):
             "look_at_log":  REWARD_LOOK_AT_LOG,
             "approach":     REWARD_APPROACH,
             "step":         REWARD_STEP,
+            "wrong_block":  REWARD_WRONG_BLOCK,
             "done_penalty": REWARD_DONE_PENALTY,
+            "success":      REWARD_SUCCESS,
         },
     }
     Path(run_dir, "config.json").write_text(json.dumps(cfg, indent=2))
@@ -189,6 +194,7 @@ def train(args):
     signal.signal(signal.SIGTERM, _save_and_exit)
 
     train_start = time.time()
+    global_step = agent._step  # continuar desde el step del checkpoint si aplica
 
     for ep in range(1, args.episodes + 1):
         ep_start      = time.time()
@@ -218,14 +224,26 @@ def train(args):
                 ep_losses.append(loss)
 
             action_counts[info["action_name"]] += 1
-            obs        = next_obs
-            ep_reward += reward
-            ep_steps  += 1
+            obs          = next_obs
+            ep_reward   += reward
+            ep_steps    += 1
+            global_step += 1
 
             broken_this_step    = sum(1 for b in info["blocks_broken"] if "log" in b)
             collected_this_step = info.get("logs_collected", 0)
             ep_logs_broken     += broken_this_step
             ep_logs_collected  += collected_this_step
+
+            metrics.log_step(
+                global_step = global_step,
+                episode     = ep,
+                reward      = reward,
+                loss        = loss,
+                epsilon     = agent.epsilon,
+                action      = info["action_name"],
+                extra       = {"logs_collected": collected_this_step,
+                               "logs_broken":    broken_this_step},
+            )
 
             # State en cada step
             cur_state = obs["state"][-STATE_DIM:]
@@ -248,12 +266,19 @@ def train(args):
 
         ep_time    = time.time() - ep_start
         avg_loss   = sum(ep_losses) / len(ep_losses) if ep_losses else 0.0
-        end_reason = "terminado" if terminated else "truncado (timeout)"
+        success    = bool(info.get("success", False))
+        if success:
+            end_reason = "ÉXITO (tronco recogido)"
+        elif terminated:
+            end_reason = "terminado (muerte / reward threshold)"
+        else:
+            end_reason = "truncado (timeout)"
         metrics.log_episode(ep, ep_reward, ep_steps, ep_logs_broken,
                             extra={"avg_loss":       round(avg_loss, 6),
                                    "epsilon":        round(agent.epsilon, 4),
                                    "ep_time_s":      round(ep_time, 2),
-                                   "logs_collected": ep_logs_collected})
+                                   "logs_collected": ep_logs_collected,
+                                   "success":        success})
 
         print(f"\n  Fin: {end_reason}")
         print(f"  reward={ep_reward:+.4f}  steps={ep_steps}  "

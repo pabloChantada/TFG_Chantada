@@ -40,6 +40,8 @@ from constants import (
     REWARD_BREAK_LOG, REWARD_HIT_TREE, REWARD_LOOK_AT_LOG,
     REWARD_COLLECT_LOG,
     REWARD_APPROACH, REWARD_STEP, REWARD_DONE_PENALTY,
+    REWARD_WRONG_BLOCK,
+    REWARD_SUCCESS, LOGS_TO_SUCCESS,
     MAX_STEPS, CUMULATIVE_REWARD_THRESHOLD,
 )
 
@@ -127,6 +129,10 @@ class MinecraftRLEnv(gym.Env):
         self._last_tree_visible:  float = 0.0
         # Recompensa por recoger troncos: delta de inventario entre steps
         self._log_count_delta: int = 0
+        # Troncos recogidos acumulados en el episodio (condición de éxito)
+        self._logs_collected_total: int = 0
+        # Troncos rotos por el agente en el episodio (gate del éxito)
+        self._logs_broken_total: int = 0
 
     # ── Gymnasium API ─────────────────────────────────────────────────────────
 
@@ -144,6 +150,8 @@ class MinecraftRLEnv(gym.Env):
         self._prev_tree_visible  = 0.0
         self._last_tree_visible  = 0.0
         self._log_count_delta    = 0
+        self._logs_collected_total = 0
+        self._logs_broken_total  = 0
 
         resp = self._post("/reset", {})
         obs  = self._parse_obs(resp)
@@ -157,8 +165,14 @@ class MinecraftRLEnv(gym.Env):
         events = resp.get("events", {})
         reward = self._compute_reward(events)
 
-        self._step_count        += 1
-        self._cumulative_reward += reward
+        self._step_count           += 1
+        self._logs_collected_total += self._log_count_delta
+        # Troncos rotos por el agente en este step (gate para success real)
+        logs_broken_this_step = sum(
+            1 for b in events.get("blocks_broken", []) if b in LOG_TYPES
+        )
+        self._logs_broken_total += logs_broken_this_step
+        success                     = False
 
         # ── Condiciones de terminación ────────────────────────────────────────
         terminated = False
@@ -168,12 +182,26 @@ class MinecraftRLEnv(gym.Env):
             terminated = True
             reward    += REWARD_DONE_PENALTY
 
-        elif self._cumulative_reward < CUMULATIVE_REWARD_THRESHOLD:
+        # Éxito real: recoger ≥ LOGS_TO_SUCCESS *Y* haber roto al menos un tronco
+        # en el episodio. El gate evita el patrón degenerado en el que el agente
+        # spawnea sobre drops residuales del reset previo y "cosecha" sin atacar
+        # — eso inflaba la success rate y disparaba Q-values de estados triviales.
+        elif (
+            self._logs_collected_total >= LOGS_TO_SUCCESS
+            and self._logs_broken_total >= 1
+        ):
+            terminated = True
+            reward    += REWARD_SUCCESS
+            success    = True
+
+        elif self._cumulative_reward + reward < CUMULATIVE_REWARD_THRESHOLD:
             terminated = True
             reward    += REWARD_DONE_PENALTY
 
         if self._step_count >= self._max_steps:
             truncated = True
+
+        self._cumulative_reward += reward
 
         info = {
             "step":              self._step_count,
@@ -184,6 +212,9 @@ class MinecraftRLEnv(gym.Env):
             "attacked_block":    events.get("attacked_block", None),
             "log_broken":         self._prev_log_count,
             "logs_collected":    self._log_count_delta,   # troncos recogidos este step
+            "logs_collected_total": self._logs_collected_total,
+            "logs_broken_total":  self._logs_broken_total,
+            "success":           success,
         }
 
         return obs, reward, terminated, truncated, info
@@ -207,6 +238,13 @@ class MinecraftRLEnv(gym.Env):
 
         if events.get("is_attacking_tree", False):
             reward += REWARD_HIT_TREE
+        else:
+            # Atacar algo que no sea tronco: penalización del mismo orden
+            # que REWARD_STEP para desincentivar spam de `attack` sin colapsar
+            # la exploración.
+            attacked = events.get("attacked_block")
+            if attacked and attacked not in LOG_TYPES:
+                reward += REWARD_WRONG_BLOCK
 
         if self._log_count_delta > 0:
             reward += self._log_count_delta * REWARD_COLLECT_LOG

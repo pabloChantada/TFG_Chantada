@@ -105,6 +105,7 @@ def train(args):
     signal.signal(signal.SIGTERM, _save_and_exit)
 
     train_start = time.time()
+    global_step = agent._step  # continuar desde el step del checkpoint si aplica
 
     for ep in range(1, args.episodes + 1):
         ep_start      = time.time()
@@ -134,14 +135,26 @@ def train(args):
                 ep_losses.append(loss)
 
             action_counts[info["action_name"]] += 1
-            obs        = next_obs
-            ep_reward += reward
-            ep_steps  += 1
+            obs          = next_obs
+            ep_reward   += reward
+            ep_steps    += 1
+            global_step += 1
 
             broken_this_step    = sum(1 for b in info["blocks_broken"] if "log" in b)
             collected_this_step = info.get("logs_collected", 0)
             ep_logs_broken     += broken_this_step
             ep_logs_collected  += collected_this_step
+
+            metrics.log_step(
+                global_step = global_step,
+                episode     = ep,
+                reward      = reward,
+                loss        = loss,
+                epsilon     = agent.epsilon,
+                action      = info["action_name"],
+                extra       = {"logs_collected": collected_this_step,
+                               "logs_broken":    broken_this_step},
+            )
 
             # State en cada step
             cur_state = next_obs[-STATE_DIM:]
@@ -164,12 +177,19 @@ def train(args):
 
         ep_time    = time.time() - ep_start
         avg_loss   = sum(ep_losses) / len(ep_losses) if ep_losses else 0.0
-        end_reason = "terminado" if terminated else "truncado (timeout)"
+        success    = bool(info.get("success", False))
+        if success:
+            end_reason = "ÉXITO (tronco recogido)"
+        elif terminated:
+            end_reason = "terminado (muerte / reward threshold)"
+        else:
+            end_reason = "truncado (timeout)"
         metrics.log_episode(ep, ep_reward, ep_steps, ep_logs_broken,
                             extra={"avg_loss":       round(avg_loss, 6),
                                    "epsilon":        round(agent.epsilon, 4),
                                    "ep_time_s":      round(ep_time, 2),
-                                   "logs_collected": ep_logs_collected})
+                                   "logs_collected": ep_logs_collected,
+                                   "success":        success})
 
         print(f"\n  Fin: {end_reason}")
         print(f"  reward={ep_reward:+.4f}  steps={ep_steps}  "
