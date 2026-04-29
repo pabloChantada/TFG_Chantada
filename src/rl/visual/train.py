@@ -273,12 +273,19 @@ def train(args):
             end_reason = "terminado (muerte / reward threshold)"
         else:
             end_reason = "truncado (timeout)"
+        w_norms  = agent.weight_max_abs()
+        w_max    = max(w_norms.values()) if w_norms else 0.0
         metrics.log_episode(ep, ep_reward, ep_steps, ep_logs_broken,
                             extra={"avg_loss":       round(avg_loss, 6),
                                    "epsilon":        round(agent.epsilon, 4),
                                    "ep_time_s":      round(ep_time, 2),
                                    "logs_collected": ep_logs_collected,
-                                   "success":        success})
+                                   "success":        success,
+                                   "weight_max":     round(w_max, 4),
+                                   "weight_norms":   {k: round(v, 4) for k, v in w_norms.items()}})
+        if w_max > 50.0:
+            print(f"  ⚠ DIVERGENCIA: ||weight||_max={w_max:.2f} (umbral=50). "
+                  f"Considera abortar.")
 
         print(f"\n  Fin: {end_reason}")
         print(f"  reward={ep_reward:+.4f}  steps={ep_steps}  "

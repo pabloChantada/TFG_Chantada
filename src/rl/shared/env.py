@@ -87,6 +87,7 @@ class MinecraftRLEnv(gym.Env):
         img_frame_stack: int  = 1,
         render_mode:     str | None = None,
         max_steps:       int  = MAX_STEPS,
+        logs_to_success: int  = LOGS_TO_SUCCESS,
     ):
         super().__init__()
         self.bridge_url      = f"http://localhost:{bridge_port}"
@@ -95,6 +96,7 @@ class MinecraftRLEnv(gym.Env):
         self.img_frame_stack = max(1, img_frame_stack)
         self.render_mode     = render_mode
         self._max_steps      = max_steps
+        self._logs_to_success = max(1, int(logs_to_success))
 
         # ── Espacio de observaciones ──────────────────────────────────────────
         obs_dim     = STATE_DIM * self.frame_stack
@@ -187,7 +189,7 @@ class MinecraftRLEnv(gym.Env):
         # spawnea sobre drops residuales del reset previo y "cosecha" sin atacar
         # — eso inflaba la success rate y disparaba Q-values de estados triviales.
         elif (
-            self._logs_collected_total >= LOGS_TO_SUCCESS
+            self._logs_collected_total >= self._logs_to_success
             and self._logs_broken_total >= 1
         ):
             terminated = True

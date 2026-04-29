@@ -192,6 +192,15 @@ class VisualDQNAgent:
 
         return loss.item()
 
+    @torch.no_grad()
+    def weight_max_abs(self) -> dict:
+        """Magnitud máxima de los pesos del head MLP. Detector temprano de divergencia."""
+        out = {}
+        for name, p in self.q_net.named_parameters():
+            if name.startswith("mlp.") and name.endswith(".weight"):
+                out[name] = float(p.abs().max().item())
+        return out
+
     def save(self, path: str):
         torch.save({
             "q_net":        self.q_net.state_dict(),

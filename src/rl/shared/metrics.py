@@ -98,21 +98,20 @@ class RLMetrics:
         fig = plt.figure(figsize=(16, 12))
         gs  = fig.add_gridspec(4, 2, hspace=0.45, wspace=0.25)
 
-        # ── Fila 1: métricas por step (loss y reward) ─────────────────────────
+        # ── Fila 1: salud del entrenamiento (loss + magnitud de pesos) ────────
         self._plot_loss_per_step(fig.add_subplot(gs[0, 0]), step_window)
-        self._plot_reward_per_step(fig.add_subplot(gs[0, 1]), step_window)
+        self._plot_weight_norm(fig.add_subplot(gs[0, 1]))
 
-        # ── Fila 2: exploración + distribución de acciones ────────────────────
-        self._plot_epsilon(fig.add_subplot(gs[1, 0]))
-        self._plot_action_distribution(fig.add_subplot(gs[1, 1]))
+        # ── Fila 2: comportamiento del agente ─────────────────────────────────
+        self._plot_action_distribution(fig.add_subplot(gs[1, 0]))
+        self._plot_reward_per_episode(fig.add_subplot(gs[1, 1]), ep_window)
 
-        # ── Fila 3: reward y duración por episodio ────────────────────────────
-        self._plot_reward_per_episode(fig.add_subplot(gs[2, 0]), ep_window)
-        self._plot_episode_duration(fig.add_subplot(gs[2, 1]), ep_window)
+        # ── Fila 3: progreso de la tarea ──────────────────────────────────────
+        self._plot_episode_duration(fig.add_subplot(gs[2, 0]), ep_window)
+        self._plot_logs_per_episode(fig.add_subplot(gs[2, 1]))
 
-        # ── Fila 4: troncos por episodio + success rate ───────────────────────
-        self._plot_logs_per_episode(fig.add_subplot(gs[3, 0]))
-        self._plot_success_rate(fig.add_subplot(gs[3, 1]), ep_window)
+        # ── Fila 4: éxito (panel central, ocupando dos columnas) ──────────────
+        self._plot_success_rate(fig.add_subplot(gs[3, :]), ep_window)
 
         fig.suptitle(f"Métricas RL — {self.run_dir.name}", fontsize=14, y=0.995)
 
@@ -181,60 +180,37 @@ class RLMetrics:
         ax.legend(fontsize=8, loc="upper left")
         ax.grid(True, alpha=0.3, which="both")
 
-    def _plot_reward_per_step(self, ax, window: int):
+    def _plot_weight_norm(self, ax):
         """
-        Reward por step es muy sparse (≥99% son penalty base).
-        En vez de una línea, graficamos:
-          - línea fina: reward acumulado dentro del episodio actual
-            (se resetea a 0 en cada nuevo episodio)
-          - scatter: eventos con reward > +0.1 (break, collect, success, hit_tree),
-            coloreados según la magnitud.
+        Magnitud máxima de los pesos del head MLP por episodio.
+        Detector temprano de divergencia: cuando los Q explotan a 10^N, los pesos
+        crecen mucho antes de que la loss lo refleje (la MSE puede ser baja entre
+        Q y target aunque ambos diverjan al mismo ritmo).
+        Umbrales orientativos: <5 sano, 10-50 vigilar, >50 divergencia.
         """
-        del window  # no usado
-        if not self._steps:
-            ax.set_title("Reward por step (eventos)")
+        if not self._episodes:
+            ax.set_title("||weight||_max del head MLP")
             return
-
-        rewards  = np.array([s["reward"]   for s in self._steps], dtype=np.float64)
-        episodes = np.array([s["episode"]  for s in self._steps], dtype=np.int64)
-        x        = np.arange(len(rewards))
-
-        # Reward acumulado intra-episodio: reset al cambio de episodio.
-        cum   = np.zeros_like(rewards)
-        running = 0.0
-        prev_ep = episodes[0] if len(episodes) else -1
-        for i, (r, ep) in enumerate(zip(rewards, episodes)):
-            if ep != prev_ep:
-                running = 0.0
-                prev_ep = ep
-            running += r
-            cum[i] = running
-        ax.plot(x, cum, color="steelblue", linewidth=0.8,
-                alpha=0.7, label="reward acumulado (ep)")
-
-        # Eventos positivos (picos dispersos).
-        mask = rewards > 0.1
-        if mask.any():
-            ax.scatter(x[mask], rewards[mask], c=rewards[mask],
-                       cmap="plasma", s=14, alpha=0.85, label="evento (+reward)",
-                       zorder=3)
-
-        ax.axhline(0, color="gray", linestyle="--", linewidth=0.7)
-        ax.set_xlabel("Step")
-        ax.set_ylabel("Reward")
-        ax.set_title("Eventos de reward + acumulado intra-episodio")
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-
-    def _plot_epsilon(self, ax):
-        if not self._steps:
-            ax.set_title("Epsilon")
+        eps  = [e["episode"] for e in self._episodes]
+        wmax = [e.get("weight_max", None) for e in self._episodes]
+        wmax = [w for w in wmax if w is not None]
+        if not wmax:
+            ax.text(0.5, 0.5, "weight_max no registrado",
+                    ha="center", va="center", transform=ax.transAxes, color="gray")
+            ax.set_title("||weight||_max del head MLP")
             return
-        eps = [s["epsilon"] for s in self._steps]
-        ax.plot(np.arange(len(eps)), eps, color="goldenrod", linewidth=1.2)
-        ax.set_xlabel("Step")
-        ax.set_ylabel("ε")
-        ax.set_title("Decaimiento de ε (exploración)")
+        eps = eps[:len(wmax)]
+        ax.plot(eps, wmax, color="darkred", linewidth=1.5, marker="o", markersize=3)
+        ax.axhline(50.0, color="red",     linestyle="--", linewidth=0.8, alpha=0.7,
+                   label="umbral divergencia (50)")
+        ax.axhline(10.0, color="orange",  linestyle=":",  linewidth=0.8, alpha=0.7,
+                   label="vigilar (10)")
+        if max(wmax) > 100:
+            ax.set_yscale("log")
+        ax.set_xlabel("Episodio")
+        ax.set_ylabel("max |w|")
+        ax.set_title(f"||weight||_max del head MLP  —  actual={wmax[-1]:.2f}")
+        ax.legend(fontsize=8, loc="upper left")
         ax.grid(True, alpha=0.3)
 
     def _plot_action_distribution(self, ax):
