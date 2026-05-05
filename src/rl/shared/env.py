@@ -43,6 +43,7 @@ from constants import (
     REWARD_WRONG_BLOCK,
     REWARD_SUCCESS, LOGS_TO_SUCCESS,
     MAX_STEPS, CUMULATIVE_REWARD_THRESHOLD,
+    HYBRID_FLAGS, N_HYBRID_FLAGS, CAMERA_MAX_RAD,
 )
 
 LOG_TYPES = frozenset([
@@ -88,6 +89,7 @@ class MinecraftRLEnv(gym.Env):
         render_mode:     str | None = None,
         max_steps:       int  = MAX_STEPS,
         logs_to_success: int  = LOGS_TO_SUCCESS,
+        hybrid:          bool = False,
     ):
         super().__init__()
         self.bridge_url      = f"http://localhost:{bridge_port}"
@@ -97,6 +99,7 @@ class MinecraftRLEnv(gym.Env):
         self.render_mode     = render_mode
         self._max_steps      = max_steps
         self._logs_to_success = max(1, int(logs_to_success))
+        self.hybrid          = hybrid
 
         # ── Espacio de observaciones ──────────────────────────────────────────
         obs_dim     = STATE_DIM * self.frame_stack
@@ -111,8 +114,18 @@ class MinecraftRLEnv(gym.Env):
         else:
             self.observation_space = state_space
 
-        # ── Espacio de acciones: discreto puro ───────────────────────────────
-        self.action_space = spaces.Discrete(len(ACTIONS))
+        # ── Espacio de acciones ──────────────────────────────────────────────
+        if self.hybrid:
+            # Hybrid SAC: vector concatenado [flags binarios (0/1) | dyaw | dpitch (rad)].
+            # Bounds asimétricos: [0,1] para flags + [-CAMERA_MAX_RAD, +CAMERA_MAX_RAD]
+            # para cámara. Usamos un solo Box con bounds vectorizados.
+            low  = np.array([0.0]*N_HYBRID_FLAGS + [-CAMERA_MAX_RAD, -CAMERA_MAX_RAD],
+                            dtype=np.float32)
+            high = np.array([1.0]*N_HYBRID_FLAGS + [+CAMERA_MAX_RAD, +CAMERA_MAX_RAD],
+                            dtype=np.float32)
+            self.action_space = spaces.Box(low=low, high=high, dtype=np.float32)
+        else:
+            self.action_space = spaces.Discrete(len(ACTIONS))
 
         # ── Estado interno del episodio ───────────────────────────────────────
         self._step_count        = 0
@@ -159,10 +172,14 @@ class MinecraftRLEnv(gym.Env):
         obs  = self._parse_obs(resp)
         return obs, {}
 
-    def step(self, action: int):
-        action_name = ACTIONS[int(action)]
+    def step(self, action):
+        if self.hybrid:
+            payload, action_name = self._build_hybrid_payload(action)
+        else:
+            action_name = ACTIONS[int(action)]
+            payload     = {"action": action_name}
 
-        resp   = self._post("/step", {"action": action_name})
+        resp   = self._post("/step", payload)
         obs    = self._parse_obs(resp)
         events = resp.get("events", {})
         reward = self._compute_reward(events)
@@ -228,6 +245,31 @@ class MinecraftRLEnv(gym.Env):
 
     def close(self):
         pass
+
+    # ── Hybrid action helpers ─────────────────────────────────────────────────
+
+    def _build_hybrid_payload(self, action) -> tuple[dict, str]:
+        """
+        Convierte un action_vec numpy (n_flags + 2,) en el payload HTTP del bridge.
+
+        El último par son (dyaw, dpitch) en radianes — el agente Mineflayer los
+        suma a la orientación actual del bot tal cual. Devuelve también un
+        nombre legible para info["action_name"] (logging/metrics).
+        """
+        a = np.asarray(action, dtype=np.float32).flatten()
+        flags_arr = a[:N_HYBRID_FLAGS]
+        dyaw      = float(a[N_HYBRID_FLAGS + 0])
+        dpitch    = float(a[N_HYBRID_FLAGS + 1])
+
+        flags = {name: bool(flags_arr[i] > 0.5) for i, name in enumerate(HYBRID_FLAGS)}
+        payload = {
+            "flags":  flags,
+            "camera": {"dyaw": dyaw, "dpitch": dpitch},
+        }
+        active = [n for n, v in flags.items() if v]
+        cam_str = f"yaw={dyaw:+.2f} pitch={dpitch:+.2f}"
+        action_name = ("+".join(active) or "noop") + f"|{cam_str}"
+        return payload, action_name
 
     # ── Reward ────────────────────────────────────────────────────────────────
 

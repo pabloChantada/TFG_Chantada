@@ -40,6 +40,11 @@ const STEP_WAIT_MS = {
     camera_down:           50,
 }
 
+// Hybrid SAC (espacio MineRL): pausa única tras aplicar flags concurrentes + cámara continua.
+// 200 ms cubre el caso peor (forward+jump) sin penalizar steps de solo cámara.
+const HYBRID_STEP_WAIT_MS = 200
+const HYBRID_FLAGS = ['forward', 'jump', 'sprint', 'attack']
+
 const LOG_TYPES = ['oak_log', 'birch_log', 'spruce_log', 'dark_oak_log', 'jungle_log', 'acacia_log']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -133,6 +138,73 @@ async function executeRLAction(bot, actionName) {
         default:
             logError('RLAgent', new Error(`Acción desconocida: "${actionName}"`))
     }
+
+    return { attackedTree, attackedBlock, brokenBlocks }
+}
+
+// ── Hybrid SAC: flags binarios concurrentes + cámara continua ─────────────────
+
+async function executeHybridAction(bot, payload) {
+    const flags  = payload.flags  || {}
+    const camera = payload.camera || {}
+    const dyaw   = Number(camera.dyaw   || 0)
+    const dpitch = Number(camera.dpitch || 0)
+
+    let attackedTree  = false
+    let attackedBlock = null
+    const brokenBlocks = []
+
+    // 1. Cámara continua (un solo bot.look acumulando ambos deltas)
+    if (Math.abs(dyaw) > 1e-4 || Math.abs(dpitch) > 1e-4) {
+        const newYaw   = bot.entity.yaw   + dyaw            // mineflayer: izq=+yaw, igual que camera_left discreta
+        const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, bot.entity.pitch + dpitch))
+        await bot.look(newYaw, newPitch, false)
+    }
+
+    // 2. Flags concurrentes de movimiento
+    bot.setControlState('forward', !!flags.forward)
+    bot.setControlState('jump',    !!flags.jump)
+    bot.setControlState('sprint',  !!flags.sprint)
+    // back/left/right/sneak no soportados en HYBRID_FLAGS (descarta el subset
+    // <2.5% del dataset según EDA). Si llegan en payload, se ignoran.
+
+    // 3. Attack (si flag activo) — solo cuenta si el cursor apunta a un log.
+    //    El BC del dataset MineRL tiene attack=1 en ~67% de steps; sin este
+    //    filtro, cada attack sobre tierra/grass/hojas dispara bot.dig() con
+    //    timeout de 8s, multiplicando el tiempo de episodio. Mantiene la
+    //    semántica "attack útil" del dataset (en MineRL solo el reward por log
+    //    es lo que importa) sin penalizar la política a nivel de gradient
+    //    (el agente aprende online que attack vale solo apuntando a un log).
+    if (flags.attack) {
+        const block = bot.blockAtCursor(4.5)
+        if (block && LOG_TYPES.includes(block.name) && bot.canDigBlock(block)) {
+            attackedTree  = true
+            attackedBlock = block.name
+            const blockPos = block.position
+            try {
+                const DIG_TIMEOUT_MS = 8000
+                await Promise.race([
+                    bot.dig(block, true),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('dig timeout')), DIG_TIMEOUT_MS)
+                    ),
+                ])
+                const blockAfter = bot.blockAt(blockPos)
+                if (!blockAfter || blockAfter.type === 0) {
+                    brokenBlocks.push(block.name)
+                }
+            } catch (err) {
+                logInfo('RLAgent', `dig abortado: ${err.message}`)
+                try { bot.stopDigging() } catch (_) {}
+            }
+        }
+    } else {
+        // Mantener el hold de movimiento durante el step, sin atacar.
+        await sleep(STEP_HOLD_MS)
+    }
+
+    // 4. Soltar todos los flags al final del step (modelo "step = 1 tick controlado")
+    await releaseAll(bot)
 
     return { attackedTree, attackedBlock, brokenBlocks }
 }
@@ -272,19 +344,29 @@ export class RLAgent extends BaseAgent {
     // ── Handlers ──────────────────────────────────────────────────────────────
 
     async _handleStep(payload) {
-        const { action } = payload
-
         this._blocksBroken    = []
         this._isAttackingTree = false
         this._attackedBlock   = null
         this._isDead          = false
 
-        const { attackedTree, attackedBlock, brokenBlocks } = await executeRLAction(this.bot, action)
+        let result, waitMs
+        if (payload && payload.flags !== undefined) {
+            // Modo Hybrid SAC: payload = {flags: {...}, camera: {dyaw, dpitch}}
+            result = await executeHybridAction(this.bot, payload)
+            waitMs = HYBRID_STEP_WAIT_MS
+        } else {
+            // Modo discreto legacy (DQN / PPO / SAC discreto): payload = {action: name}
+            const { action } = payload
+            result = await executeRLAction(this.bot, action)
+            waitMs = STEP_WAIT_MS[action] ?? 150
+        }
+
+        const { attackedTree, attackedBlock, brokenBlocks } = result
         this._isAttackingTree = attackedTree
         this._attackedBlock   = attackedBlock
-        this._blocksBroken.push(...brokenBlocks)  // añadir los rotos por posición (más fiable que diggingCompleted)
+        this._blocksBroken.push(...brokenBlocks)
 
-        await sleep(STEP_WAIT_MS[action] ?? 150)
+        await sleep(waitMs)
 
         return {
             state:  this._getState(),

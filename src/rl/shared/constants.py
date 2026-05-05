@@ -48,12 +48,22 @@ ACTIONS = [
     "move_forward_jump",
     "camera_right",
     "camera_left",
-    "camera_up",      
-    "camera_down",    
+    "camera_up",
+    "camera_down",
 ]
 
 CAMERA_TURN_RAD  = 0.15   # ~8.6° — más fino que 11.5°
 CAMERA_PITCH_RAD = 0.10   # vertical más pequeño
+
+# ── Hybrid SAC (espacio MineRL) ───────────────────────────────────────────────
+# Flags binarios concurrentes (subset útil del action space de MineRL Treechop-v0).
+# Descartados: back, left, right, sneak (<2.5% del dataset humano según EDA).
+HYBRID_FLAGS = ["forward", "jump", "sprint", "attack"]
+N_HYBRID_FLAGS = len(HYBRID_FLAGS)
+
+# Bound del delta de cámara por step en radianes (~28°). Cubre el p99 del
+# dataset MineRL (giros humanos hasta ~30° por step).
+CAMERA_MAX_RAD = 0.5
 
 REWARD_BREAK_LOG   =  20.0   # romper un tronco: objetivo principal
 REWARD_COLLECT_LOG =  10.0   # recoger el tronco del suelo (señal principal)

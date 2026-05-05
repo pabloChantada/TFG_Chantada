@@ -129,3 +129,5 @@ train_balanced.jsonl
 train_cleaned.jsonl
 legacy/
 inference_logs/
+data/MineRLTreechop-v0.zip
+data/MineRLTreechop-v0/*
