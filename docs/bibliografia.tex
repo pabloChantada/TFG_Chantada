@@ -1,0 +1,422 @@
+% =========================================================================
+% Bibliografia del TFG -- Pablo Chantada Saborido
+%
+% Uso:
+%   (a) Compilar este fichero por si solo para previsualizar:
+%       pdflatex bibliografia.tex
+%   (b) Incluirlo desde la memoria principal:
+%       \input{bibliografia}   % dentro del documento, antes de \end{document}
+%   (c) Copiar solo el bloque \begin{thebibliography}...\end{thebibliography}
+%       al final de tu memoria.tex
+%
+% Estilo: numerico tipo IEEE. Los \cite{key} usan las claves indicadas.
+% Entradas marcadas con (*) son las imprescindibles.
+% =========================================================================
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{margin=2.5cm}
+
+\title{Bibliografia --- TFG Agentes RL en Minecraft}
+\author{Pablo Chantada Saborido}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{thebibliography}{99}
+
+% -------------------------------------------------------------------------
+% 1. Plataformas y entornos Minecraft
+% -------------------------------------------------------------------------
+
+\bibitem{malmo2016}
+M.~Johnson, K.~Hofmann, T.~Hutton, and D.~Bignell,
+``The Malmo Platform for Artificial Intelligence Experimentation,''
+in \emph{Proc.\ 25th Int.\ Joint Conf.\ on Artificial Intelligence (IJCAI)},
+2016, pp.~4246--4247.
+
+\bibitem{minerl2019}
+W.~H. Guss, B.~Houghton, N.~Topin, P.~Wang, C.~Codel, M.~Veloso, and
+R.~Salakhutdinov,
+``MineRL: A Large-Scale Dataset of Minecraft Demonstrations,''
+in \emph{Proc.\ 28th Int.\ Joint Conf.\ on Artificial Intelligence (IJCAI)},
+2019, pp.~2442--2448.
+
+\bibitem{minerl2020}
+W.~H. Guss \emph{et al.},
+``Towards Robust and Domain Agnostic Reinforcement Learning Competitions:
+MineRL 2020,''
+in \emph{Proc.\ NeurIPS 2020 Competition and Demonstration Track},
+PMLR, vol.~133, 2021, pp.~233--252.
+
+\bibitem{minerldiamond2021}
+A.~Kanervisto \emph{et al.},
+``MineRL Diamond 2021 Competition: Overview, Results, and Lessons Learned,''
+in \emph{NeurIPS 2021 Competitions and Demonstrations Track},
+2022.
+
+\bibitem{minedojo2022}
+L.~Fan \emph{et al.},
+``MineDojo: Building Open-Ended Embodied Agents with Internet-Scale
+Knowledge,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~35, 2022.
+
+\bibitem{mineflayer}
+PrismarineJS,
+\emph{Mineflayer: Create Minecraft bots with a high-level JavaScript API}
+[Software], 2024. [Online]. Available:
+\url{https://github.com/PrismarineJS/mineflayer}
+
+\bibitem{papermc}
+PaperMC,
+\emph{Paper: High performance Minecraft server} [Software], 2024.
+[Online]. Available: \url{https://papermc.io/}
+
+% -------------------------------------------------------------------------
+% 2. Agentes con LLMs en Minecraft
+% -------------------------------------------------------------------------
+
+\bibitem{voyager2023}
+G.~Wang, Y.~Xie, Y.~Jiang, A.~Mandlekar, C.~Xiao, Y.~Zhu, L.~Fan, and
+A.~Anandkumar,
+``Voyager: An Open-Ended Embodied Agent with Large Language Models,''
+\emph{arXiv preprint arXiv:2305.16291}, 2023.
+
+\bibitem{ghost2023}
+X.~Zhu \emph{et al.},
+``Ghost in the Minecraft: Generally Capable Agents for Open-World Environments
+via Large Language Models with Text-based Knowledge and Memory,''
+\emph{arXiv preprint arXiv:2305.17144}, 2023.
+
+\bibitem{jarvis1}
+Z.~Wang \emph{et al.},
+``JARVIS-1: Open-World Multi-task Agents with Memory-Augmented Multimodal
+Language Models,''
+\emph{arXiv preprint arXiv:2311.05997}, 2023.
+
+\bibitem{steve1}
+S.~Lifshitz, K.~Paster, H.~Chan, J.~Ba, and S.~McIlraith,
+``STEVE-1: A Generative Model for Text-to-Behavior in Minecraft,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+2023.
+
+\bibitem{plan4mc}
+H.~Yuan, C.~Zhang, H.~Wang, F.~Xie, P.~Cai, H.~Dong, and Z.~Lu,
+``Plan4MC: Skill Reinforcement Learning and Planning for Open-World Minecraft
+Tasks,''
+\emph{arXiv preprint arXiv:2303.16563}, 2023.
+
+\bibitem{mindcraft}
+K.~Nottingham \emph{et al.},
+\emph{Mindcraft: LLM-powered Minecraft agents} [Software], 2024.
+[Online]. Available: \url{https://github.com/kolbytn/mindcraft}
+
+% -------------------------------------------------------------------------
+% 3. Planificacion clasica (HTN)
+% -------------------------------------------------------------------------
+
+\bibitem{erol1994}
+K.~Erol, J.~Hendler, and D.~S. Nau,
+``HTN Planning: Complexity and Expressivity,''
+in \emph{Proc.\ 12th National Conf.\ on Artificial Intelligence (AAAI)},
+1994, pp.~1123--1128.
+
+\bibitem{ghallab2004}
+M.~Ghallab, D.~Nau, and P.~Traverso,
+\emph{Automated Planning: Theory and Practice}.
+San Francisco, CA: Morgan Kaufmann, 2004.
+
+\bibitem{shop2}
+D.~S. Nau, T.-C. Au, O.~Ilghami, U.~Kuter, J.~W. Murdock, D.~Wu, and F.~Yaman,
+``SHOP2: An HTN Planning System,''
+\emph{Journal of Artificial Intelligence Research}, vol.~20, pp.~379--404,
+2003.
+
+\bibitem{georgievski2015}
+I.~Georgievski and M.~Aiello,
+``HTN planning: Overview, comparison, and beyond,''
+\emph{Artificial Intelligence}, vol.~222, pp.~124--156, 2015.
+
+% -------------------------------------------------------------------------
+% 4. Imitation Learning y Behavior Cloning
+% -------------------------------------------------------------------------
+
+\bibitem{pomerleau1991}
+D.~A. Pomerleau,
+``Efficient Training of Artificial Neural Networks for Autonomous
+Navigation,''
+\emph{Neural Computation}, vol.~3, no.~1, pp.~88--97, 1991.
+
+\bibitem{dagger}
+S.~Ross, G.~Gordon, and D.~Bagnell,
+``A Reduction of Imitation Learning and Structured Prediction to No-Regret
+Online Learning,''
+in \emph{Proc.\ 14th Int.\ Conf.\ on Artificial Intelligence and Statistics
+(AISTATS)}, 2011, pp.~627--635.
+
+\bibitem{gail}
+J.~Ho and S.~Ermon,
+``Generative Adversarial Imitation Learning,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~29, 2016.
+
+\bibitem{hussein2017}
+A.~Hussein, M.~M. Gaber, E.~Elyan, and C.~Jayne,
+``Imitation Learning: A Survey of Learning Methods,''
+\emph{ACM Computing Surveys}, vol.~50, no.~2, art.~21, 2017.
+
+\bibitem{vpt2022}
+B.~Baker \emph{et al.},
+``Video PreTraining (VPT): Learning to Act by Watching Unlabeled Online
+Videos,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~35, 2022.
+
+% -------------------------------------------------------------------------
+% 5. Deep Reinforcement Learning -- fundamentos
+% -------------------------------------------------------------------------
+
+\bibitem{suttonbarto}
+R.~S. Sutton and A.~G. Barto,
+\emph{Reinforcement Learning: An Introduction}, 2nd ed.
+Cambridge, MA: MIT Press, 2018.
+
+\bibitem{dqnnature}
+V.~Mnih \emph{et al.},
+``Human-level control through deep reinforcement learning,''
+\emph{Nature}, vol.~518, pp.~529--533, 2015.
+
+\bibitem{atari2013}
+V.~Mnih, K.~Kavukcuoglu, D.~Silver, A.~Graves, I.~Antonoglou, D.~Wierstra,
+and M.~Riedmiller,
+``Playing Atari with Deep Reinforcement Learning,''
+\emph{arXiv preprint arXiv:1312.5602}, 2013.
+
+\bibitem{doubledqn}
+H.~van Hasselt, A.~Guez, and D.~Silver,
+``Deep Reinforcement Learning with Double Q-Learning,''
+in \emph{Proc.\ 30th AAAI Conf.\ on Artificial Intelligence}, 2016,
+pp.~2094--2100.
+
+\bibitem{dueling}
+Z.~Wang, T.~Schaul, M.~Hessel, H.~van Hasselt, M.~Lanctot, and N.~de~Freitas,
+``Dueling Network Architectures for Deep Reinforcement Learning,''
+in \emph{Proc.\ 33rd Int.\ Conf.\ on Machine Learning (ICML)}, 2016.
+
+\bibitem{per}
+T.~Schaul, J.~Quan, I.~Antonoglou, and D.~Silver,
+``Prioritized Experience Replay,''
+in \emph{Proc.\ Int.\ Conf.\ on Learning Representations (ICLR)}, 2016.
+
+\bibitem{rainbow}
+M.~Hessel \emph{et al.},
+``Rainbow: Combining Improvements in Deep Reinforcement Learning,''
+in \emph{Proc.\ 32nd AAAI Conf.\ on Artificial Intelligence}, 2018.
+
+% -------------------------------------------------------------------------
+% 6. Policy gradient: PPO, SAC y variantes
+% -------------------------------------------------------------------------
+
+\bibitem{ppo}
+J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov,
+``Proximal Policy Optimization Algorithms,''
+\emph{arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{sac2018}
+T.~Haarnoja, A.~Zhou, P.~Abbeel, and S.~Levine,
+``Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning
+with a Stochastic Actor,''
+in \emph{Proc.\ 35th Int.\ Conf.\ on Machine Learning (ICML)}, 2018.
+
+\bibitem{sacapp}
+T.~Haarnoja \emph{et al.},
+``Soft Actor-Critic Algorithms and Applications,''
+\emph{arXiv preprint arXiv:1812.05905}, 2018.
+
+\bibitem{sacdiscrete}
+P.~Christodoulou,
+``Soft Actor-Critic for Discrete Action Settings,''
+\emph{arXiv preprint arXiv:1910.07207}, 2019.
+
+\bibitem{a3c}
+V.~Mnih \emph{et al.},
+``Asynchronous Methods for Deep Reinforcement Learning,''
+in \emph{Proc.\ 33rd Int.\ Conf.\ on Machine Learning (ICML)}, 2016.
+
+\bibitem{andrychowicz2021}
+M.~Andrychowicz \emph{et al.},
+``What Matters for On-Policy Deep Actor-Critic Methods? A Large-Scale
+Study,''
+in \emph{Proc.\ Int.\ Conf.\ on Learning Representations (ICLR)}, 2021.
+
+% -------------------------------------------------------------------------
+% 7. RL + demostraciones (Hybrid, BC + RL)
+% -------------------------------------------------------------------------
+
+\bibitem{dqfd}
+T.~Hester \emph{et al.},
+``Deep Q-Learning from Demonstrations,''
+in \emph{Proc.\ 32nd AAAI Conf.\ on Artificial Intelligence}, 2018.
+
+\bibitem{ddpgfd}
+M.~Vecerik \emph{et al.},
+``Leveraging Demonstrations for Deep Reinforcement Learning on Robotics
+Problems with Sparse Rewards,''
+\emph{arXiv preprint arXiv:1707.08817}, 2017.
+
+\bibitem{nair2018}
+A.~Nair, B.~McGrew, M.~Andrychowicz, W.~Zaremba, and P.~Abbeel,
+``Overcoming Exploration in Reinforcement Learning with Demonstrations,''
+in \emph{Proc.\ IEEE Int.\ Conf.\ on Robotics and Automation (ICRA)}, 2018.
+
+\bibitem{dapg}
+A.~Rajeswaran \emph{et al.},
+``Learning Complex Dexterous Manipulation with Deep Reinforcement Learning
+and Demonstrations,''
+in \emph{Robotics: Science and Systems (RSS)}, 2018.
+
+\bibitem{sqil}
+S.~Reddy, A.~D. Dragan, and S.~Levine,
+``SQIL: Imitation Learning via Reinforcement Learning with Sparse Rewards,''
+in \emph{Proc.\ Int.\ Conf.\ on Learning Representations (ICLR)}, 2020.
+
+\bibitem{iqlearn}
+D.~Garg, S.~Chakraborty, C.~Cundy, J.~Song, and S.~Ermon,
+``IQ-Learn: Inverse soft-Q Learning for Imitation,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~34, 2021.
+
+% -------------------------------------------------------------------------
+% 8. RL visual, CNN y normalizacion
+% -------------------------------------------------------------------------
+
+\bibitem{resnet}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun,
+``Deep Residual Learning for Image Recognition,''
+in \emph{Proc.\ IEEE Conf.\ on Computer Vision and Pattern Recognition
+(CVPR)}, 2016, pp.~770--778.
+
+\bibitem{groupnorm}
+Y.~Wu and K.~He,
+``Group Normalization,''
+in \emph{Proc.\ European Conf.\ on Computer Vision (ECCV)}, 2018,
+pp.~3--19.
+
+\bibitem{impala}
+L.~Espeholt \emph{et al.},
+``IMPALA: Scalable Distributed Deep-RL with Importance Weighted
+Actor-Learner Architectures,''
+in \emph{Proc.\ 35th Int.\ Conf.\ on Machine Learning (ICML)}, 2018.
+
+\bibitem{drqv2}
+D.~Yarats, R.~Fergus, A.~Lazaric, and L.~Pinto,
+``Mastering Visual Continuous Control: Improved Data-Augmented
+Reinforcement Learning,''
+\emph{arXiv preprint arXiv:2107.09645}, 2021.
+
+% -------------------------------------------------------------------------
+% 9. World models y RL jerarquico (lineas futuras)
+% -------------------------------------------------------------------------
+
+\bibitem{worldmodels}
+D.~Ha and J.~Schmidhuber,
+``World Models,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+2018.
+
+\bibitem{dreamerv3}
+D.~Hafner, J.~Pasukonis, J.~Ba, and T.~Lillicrap,
+``Mastering Diverse Domains through World Models,''
+\emph{arXiv preprint arXiv:2301.04104}, 2023.
+
+\bibitem{muzero}
+J.~Schrittwieser \emph{et al.},
+``Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model,''
+\emph{Nature}, vol.~588, pp.~604--609, 2020.
+
+\bibitem{options}
+R.~S. Sutton, D.~Precup, and S.~Singh,
+``Between MDPs and semi-MDPs: A Framework for Temporal Abstraction in
+Reinforcement Learning,''
+\emph{Artificial Intelligence}, vol.~112, no.~1--2, pp.~181--211, 1999.
+
+% -------------------------------------------------------------------------
+% 10. Multi-agente
+% -------------------------------------------------------------------------
+
+\bibitem{coma}
+J.~Foerster, G.~Farquhar, T.~Afouras, N.~Nardelli, and S.~Whiteson,
+``Counterfactual Multi-Agent Policy Gradients,''
+in \emph{Proc.\ 32nd AAAI Conf.\ on Artificial Intelligence}, 2018.
+
+\bibitem{qmix}
+T.~Rashid, M.~Samvelyan, C.~Schroeder de~Witt, G.~Farquhar, J.~Foerster,
+and S.~Whiteson,
+``QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent
+Reinforcement Learning,''
+in \emph{Proc.\ 35th Int.\ Conf.\ on Machine Learning (ICML)}, 2018.
+
+\bibitem{maddpg}
+R.~Lowe, Y.~Wu, A.~Tamar, J.~Harb, P.~Abbeel, and I.~Mordatch,
+``Multi-Agent Actor-Critic for Mixed Cooperative-Competitive
+Environments,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~30, 2017.
+
+% -------------------------------------------------------------------------
+% 11. Vision por computador (YOLO, ResNet -- si justificas pipeline visual)
+% -------------------------------------------------------------------------
+
+\bibitem{yolo2016}
+J.~Redmon, S.~Divvala, R.~Girshick, and A.~Farhadi,
+``You Only Look Once: Unified, Real-Time Object Detection,''
+in \emph{Proc.\ IEEE Conf.\ on Computer Vision and Pattern Recognition
+(CVPR)}, 2016, pp.~779--788.
+
+\bibitem{ultralytics}
+G.~Jocher \emph{et al.},
+\emph{Ultralytics YOLO} [Software], 2024.
+[Online]. Available: \url{https://github.com/ultralytics/ultralytics}
+
+\bibitem{alexnet}
+A.~Krizhevsky, I.~Sutskever, and G.~E. Hinton,
+``ImageNet Classification with Deep Convolutional Neural Networks,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~25, 2012, pp.~1097--1105.
+
+\bibitem{convlstm}
+X.~Shi, Z.~Chen, H.~Wang, D.-Y. Yeung, W.-K. Wong, and W.-C. Woo,
+``Convolutional LSTM Network: A Machine Learning Approach for Precipitation
+Nowcasting,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~28, 2015.
+
+% -------------------------------------------------------------------------
+% 12. Surveys y panoramicas (estado del arte)
+% -------------------------------------------------------------------------
+
+\bibitem{arulkumaran2017}
+K.~Arulkumaran, M.~P. Deisenroth, M.~Brundage, and A.~A. Bharath,
+``Deep Reinforcement Learning: A Brief Survey,''
+\emph{IEEE Signal Processing Magazine}, vol.~34, no.~6, pp.~26--38, 2017.
+
+\bibitem{li2018}
+Y.~Li,
+``Deep Reinforcement Learning: An Overview,''
+\emph{arXiv preprint arXiv:1701.07274}, 2018.
+
+\bibitem{agentdivisions}
+B.~Liu \emph{et al.},
+``A Survey of Agent Divisions and Cooperative Frameworks in Multi-Agent
+Reinforcement Learning,''
+\emph{arXiv preprint arXiv:2111.08857}, 2021.
+
+\end{thebibliography}
+
+\end{document}

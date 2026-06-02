@@ -100,7 +100,7 @@ src/evaluation/plots/*.png
 src/evaluation/README_VAE.mddata/*
 data/*.jsonl
 data/**/*.json
-
+*/dagger/frames/*
 # YOLO
 runs/*
 data/Minecraft Tree Detection.yolov8/
@@ -131,3 +131,14 @@ legacy/
 inference_logs/
 data/MineRLTreechop-v0.zip
 data/MineRLTreechop-v0/*
+
+*.aux
+*.out
+*.log
+*.acn
+*.glo
+*.ist
+*.lof
+*.lot
+*.toc
+*.synctex.gz
