@@ -215,6 +215,12 @@ def train(args):
         while not (terminated or truncated):
             action, log_prob, value = agent.select_action(obs)
             next_obs, reward, terminated, truncated, info = env.step(action)
+            # NOTA: a diferencia de los agentes off-policy (DQN/SAC), aquí se usa
+            # done = terminated OR truncated a propósito. El buffer del PPO abarca
+            # varios episodios y GAE usa este flag para CORTAR la cadena de ventajas
+            # en los límites de episodio; ponerlo a 'terminated' filtraría la
+            # ventaja al episodio siguiente. El bootstrap correcto en truncamiento
+            # exigiría guardar V(s) del estado truncado aparte (pendiente).
             done = terminated or truncated
 
             agent.store(obs, action, log_prob, value, reward, done)

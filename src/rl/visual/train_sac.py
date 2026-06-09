@@ -225,7 +225,9 @@ def train(args):
             action = agent.select_action(obs)
             next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-            stats = agent.step(obs, action, reward, next_obs, done)
+            # Bootstrap solo se anula en terminación real, no en truncamiento por
+            # límite de pasos (ahí el estado final no es terminal).
+            stats = agent.step(obs, action, reward, next_obs, terminated)
 
             if stats:
                 ep_losses_q.append((stats["loss_q1"] + stats["loss_q2"]) / 2)

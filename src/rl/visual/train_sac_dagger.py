@@ -328,7 +328,9 @@ def train(args):
 
             next_obs, reward, terminated, truncated, info = env.step(action)
             done  = terminated or truncated
-            stats = agent.step(obs, action, reward, next_obs, done)
+            # Bootstrap solo se anula en terminación real, no en truncamiento por
+            # límite de pasos (ahí el estado final no es terminal).
+            stats = agent.step(obs, action, reward, next_obs, terminated)
 
             if from_symbolic:
                 annotator.annotate(

@@ -219,7 +219,10 @@ def train(args):
             next_obs, reward, terminated, truncated, info = env.step(action)
 
             done = terminated or truncated
-            loss = agent.step(obs, action, reward, next_obs, done)
+            # Bootstrap: solo se anula en terminación real (muerte/éxito/colapso),
+            # no en truncamiento por límite de pasos. En truncamiento el estado
+            # final no es terminal y su valor debe bootstrapearse (r + gamma*V(s')).
+            loss = agent.step(obs, action, reward, next_obs, terminated)
             if loss is not None:
                 ep_losses.append(loss)
 
