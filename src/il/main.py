@@ -66,6 +66,9 @@ def parse_args():
                         help='Entrenar el ViT desde cero (sin pesos ImageNet)')
     parser.add_argument('--vit-unfreeze-blocks', type=int, default=0,
                         help='Nº de bloques ViT finales a entrenar (0=solo proj, -1=todo)')
+    parser.add_argument('--variant', type=str, default=None,
+                        help='Etiqueta del paso de diseño (p.ej. "solo-estado", "visual", "doble-cabeza") '
+                             'para la tabla de progresión de la iteración')
     return parser.parse_args()
 
 
@@ -76,8 +79,9 @@ def get_run_dir(run_timestamp):
     return run_dir
 
 
-def save_run_config(run_dir, model_type, hidden_size, feat_dim, num_actions):
+def save_run_config(run_dir, model_type, hidden_size, feat_dim, num_actions, variant=None):
     config = {
+        "variant":     variant,
         "model_type":  model_type,
         "img_size":    IMG_SIZE,
         "hidden_size": hidden_size,
@@ -296,6 +300,10 @@ def train(extractor, model, dataset, train_loader, val_loader, optimizer, schedu
     class_distribution([d['label'] for d in dataset.data], dataset, save_dir=plots_dir)
     plot_camera_error(history, save_dir=plots_dir)
 
+    # Persistir el historial para regenerar gráficas y comparar variantes offline
+    with open(os.path.join(plots_dir, "history.json"), "w") as f:
+        json.dump(history, f, indent=2)
+
     return history
 
 
@@ -364,7 +372,8 @@ if __name__ == "__main__":
         ).to(device)
 
     save_run_config(run_dir, args.model, HIDDEN_SIZE,
-                    extractor.feat_dim if extractor else 0, num_actions)
+                    extractor.feat_dim if extractor else 0, num_actions,
+                    variant=args.variant)
 
     all_labels    = [d['label'] for d in dataset.data]
     present       = np.unique(all_labels)

@@ -4,6 +4,7 @@ import minecraftData from 'minecraft-data'
 import { runFullProgression } from './progression/run_progression_iron.js'
 import { runChopProgression } from './progression/run_progression_chop.js'
 import { setupRecorder } from '../il/dataset_recorder.js'
+import { startEpisodeTracker } from '../agents/episode_metrics.js'
 
 let mcData
 const LOG_COUNT = 5
@@ -90,7 +91,12 @@ export async function startChopTrees(bot, logCount = LOG_COUNT) {
     setupPathfinder(bot, mcData, { canDig: false })
     const viewerPort = parseInt(process.env.VIEWER_PORT || '3000', 10)
     await setupRecorder(bot, mcData, viewerPort)
-    return await startChopProgression(bot, mcData, logCount)
+
+    // Métricas unificadas por episodio (data/eval/htn/eval.jsonl)
+    const tracker = startEpisodeTracker(bot, { technique: 'htn', target: logCount })
+    const result  = await startChopProgression(bot, mcData, logCount)
+    tracker.finish(result?.success)
+    return result
 }
 
 // =========================================================
