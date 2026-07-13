@@ -1,0 +1,68 @@
+\chapter{Trabajo Futuro}
+\label{chap:trabajo_futuro}
+
+\lettrine{L}{a} hipótesis central del trabajo intenta demostrar que las tres familias de técnicas son
+complementarias (Capítulo~\ref{chap:conclusions}). Cada familia presenta ventajas frente a las otras; 
+la vía más prometedora no es perfeccionar ninguna por separado, sino combinarlas.
+Este capítulo recoge aproximaciones futuras que se podrían implementar tras los descubrimientos
+de este trabajo.
+
+\paragraph{Inicialización del refuerzo por imitación}
+\label{sec:tf-il-rl}
+En lugar de entrenar las técnicas de refuerzo desde cero, se puede utilizar la política de imitación
+ya entrenada (Capítulo~\ref{chap:iter2}). La red del agente de refuerzo se inicializa 
+con los pesos del agente de \gls{il} y el refuerzo 
+se encarga únicamente de refinar ese comportamiento y de cubrir lo que la
+imitación no aprendió, realizando así un proceso de \gls{fine-tuning}. 
+
+Esta inicialización como arranque del \gls{rl} ataca de frente el problema observado en el
+Capítulo~\ref{chap:resultados}: el refuerzo desde cero invierte la mayor parte del cómputo
+en aprender lo que la imitación ya tiene aprendido. En el proceso de investigación no se 
+encontró literatura que aplicara esta hibridación específica de \gls{rl} con \gls{il} 
+en Minecraft.
+
+\paragraph{El planificador como guía de la exploración}
+\label{sec:tf-htn-rl}
+La segunda hibridación usa el \gls{htn} (Capítulo~\ref{chap:iter1}) como 
+\textbf{tutor de exploración} en el entrenamiento. La idea es similar a la de \gls{dagger}, 
+pero aplicada al refuerzo: el agente itera sobre el entorno y, 
+cuando se desvíe o no sepa qué hacer, el planificador le indica la acción
+que él habría tomado, alimentando así su aprendizaje con trayectorias útiles.
+Combinada con un algoritmo \emph{off-policy} como \gls{sac}, 
+esta guía puede integrarse directamente en el
+\gls{replay-buffer}, mezclando transiciones del tutor con las del propio agente.
+
+\paragraph{Ampliación de la cobertura del experto y subredes}
+\label{sec:tf-cobertura}
+El mayor problema presente en la imitación es la limitación del \gls{dataset}. Al no tener ejemplos de
+exploración, el agente no puede aprender a buscar. Como solución se plantea el uso de \textit{subdatasets};
+con ellos se podría dividir la tarea en subobjetivos y entrenar subredes especializadas en cada uno de ellos,
+las cuales se irían intercambiando entre sí según la situación. Por ejemplo, una subred especializada en \emph{explorar}
+se mantendría activa hasta que el agente encontrara un árbol, 
+momento en el que se activaría la subred de \emph{aproximación} al árbol, dando paso a la subred de \emph{talado} y, por
+último, a la subred de \emph{recogida}.
+
+De esta forma, la recolección del \gls{dataset} se podría paralelizar al poder lanzar varios agentes con tareas más cortas,
+abarcando así todas las situaciones posibles que el agente de imitación 
+podría encontrarse en la tarea de \gls{woodcutting}.
+
+\paragraph{Escalado de la tarea}
+\label{sec:tf-escalado}
+Todas las técnicas se evaluaron sobre la tarea de \gls{woodcutting}, una de las tareas
+más simples de la jerarquía de progresión de Minecraft (Capítulo~\ref{chap:introduccion}). El siguiente
+paso es ascender por esa jerarquía (fabricar una mesa de trabajo, un pico de
+madera, recolectar piedra) hasta tareas de horizonte mucho más largo,
+como la obtención del pico de hierro o de diamantes. 
+
+\paragraph{Introducción de otras técnicas de aprendizaje}
+\label{sec:tf-otras-tecnicas}
+Si bien las familias de técnicas estudiadas abarcan un amplio espectro de enfoques, 
+existen otras técnicas que también presentan un fuerte potencial. Como se menciona en el Capítulo~\ref{chap:sota}, el proyecto
+MindCraft~\cite{mindcraft2025} intenta completar todo el juego (una tarea con un horizonte extremadamente
+largo) utilizando únicamente modelos de lenguaje \gls{llm}, sin ningún tipo de intervención humana más
+allá de la inicialización. Además, incluye varias aproximaciones como \gls{mas}, en la que múltiples agentes
+trabajan en conjunto para resolver la tarea.
+
+Dada la capacidad de los \gls{llm} para generar código y sus altas ventanas de contexto, la posibilidad
+de completar buena parte de la jerarquía de progresión de Minecraft con estas técnicas es 
+un área de investigación muy prometedora.

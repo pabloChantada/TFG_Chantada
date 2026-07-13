@@ -1,0 +1,177 @@
+\chapter{Metodología y planificación}
+\label{chap:metodologia}
+
+\lettrine{E}{n} este capítulo se describe la metodología seguida durante la
+realización del proyecto y su planificación.
+Además, se detallan los conjuntos de datos empleados en el
+entrenamiento y la evaluación de los modelos.
+
+\section{Enfoque Metodológico}
+Al tratarse de un trabajo de investigación con un fuerte componente
+experimental, se adoptó un enfoque iterativo e incremental. Esta metodología
+permitió construir el sistema de forma gradual, validando cada técnica antes de
+incorporar la siguiente y añadiendo valor en cada iteración. A lo largo del
+proceso se siguieron los principios de la metodología ágil \textit{Scrum}~\cite{schwaber2020scrum},
+basada en ciclos de trabajo cortos y repetitivos
+({\glspl{sprint}}) de una duración media de una semana.
+
+Al final de cada iteración se realizaba una evaluación del progreso,
+identificando los problemas surgidos y proponiendo soluciones para
+continuar con el desarrollo. Esta práctica resultó especialmente útil en un
+proyecto con un alto grado de incertidumbre experimental, en el que el resultado de
+una técnica condicionaba el diseño de la siguiente. Cada \gls{sprint}
+concluía con una reunión con los directores del proyecto, en la
+que se revisaban los avances y se establecían los siguientes pasos.
+
+\section{Fases del Proyecto}
+El proyecto se inspira fuertemente en el estado del arte (Capítulo~\ref{chap:sota}), con el
+que comparte algunos conceptos de diseño (conjunto de acciones, estados, recompensas\dots), pero del que 
+difiere en su implementación al probar familias de técnicas muy variadas entre sí, incluyendo algoritmos
+no implementados directamente en \textit{Minecraft}, como las \gls{htn}. A continuación se presentan tanto la planificación
+inicial como las fases finales en las que se dividió el trabajo.
+
+\subsection{Fases \textit{a priori}}
+Antes de comenzar el desarrollo se definieron las siguientes cuatro fases:
+
+\begin{enumerate}
+  \item \textbf{Análisis y preparación inicial}: estudio del estado del arte
+        sobre agentes en \textit{Minecraft} y familiarización con las herramientas
+        (entorno de simulación, comunicación con el agente y
+        {\glspl{framework}}).
+  \item \textbf{Planificación simbólica}: implementación de la
+        \gls{htn} como primera técnica y \textit{baseline} interpretable
+        para la comparativa.
+  \item \textbf{Aprendizaje por refuerzo}: implementación de un agente de
+        refuerzo capaz de resolver la tarea únicamente a partir de la
+        observación del entorno.
+  \item \textbf{Ejecución y evaluación final}: ejecución de las técnicas,
+        configuración necesaria y análisis comparativo de los resultados.
+\end{enumerate}
+
+\subsection{Fases \textit{a posteriori}}
+En el desarrollo real, el trabajo se dividió en siete iteraciones. Debido a que la aproximación
+incremental, el diseño y la realización de cada fase condicionaban la siguiente. Por ejemplo,
+la fase de \gls{htn} se usó para generar un conjunto de demostraciones 
+que sirvió como base para el \gls{il}, el cual se añadió con posterioridad a la planificación inicial.
+
+\begin{enumerate}
+  \item \textbf{Análisis y preparación inicial}: revisión del trabajo previo,
+        junto con la familiarización con el
+        entorno de simulación y el diseño de la arquitectura general del
+        sistema, descrito en el Capítulo~\ref{chap:arquitectura}.
+  \item \textbf{Entorno de simulación}: implementación de un entorno
+        \gls{gymnasium} comunicado mediante \acrshort{http} con un agente \textit{Mineflayer}~\cite{mineflayer}
+        sobre un servidor real de \textit{Minecraft}, con reinicio determinista.
+  \item \textbf{Planificación simbólica y generación del \textit{dataset}}:
+        implementación del planificador \gls{htn} y de la descomposición de la tarea
+        de \gls{woodcutting}, empleando sus ejecuciones como conjunto de
+        demostraciones para la fase de \gls{il}.
+  \item \textbf{Aprendizaje por imitación}: diseño iterativo y entrenamiento final de una \gls{política} con
+        arquitectura de doble cabeza sobre el \textit{dataset} generado por el
+        \gls{htn}.
+  \item \textbf{Aprendizaje por refuerzo}: diseño iterativo y entrenamiento de una \gls{política} de refuerzo,
+        optimizando la arquitectura y los hiperparámetros.
+  \item \textbf{Evaluación}: introducción de métricas, definición de una condición de éxito explícita y
+        ajuste de la función de recompensa.
+  \item \textbf{Resultados y evaluación final}: evaluación de los resultados de todas las implementaciones,
+        analizando sus fortalezas y debilidades.
+\end{enumerate}
+
+Durante el desarrollo se exploraron además otras dos aproximaciones que
+finalmente se descartaron del alcance de la comparativa. La primera fue el uso de
+agentes basados en \glspl{llm} mediante el \gls{framework}
+\textit{Mindcraft}~\cite{mindcraft2025}, descartada por el elevado coste computacional de ejecutar \glspl{llm} pesados en local. 
+La segunda fue un detector visual de árboles
+basado en \acrshort{yolo}~\cite{DBLP:conf/cvpr/RedmonDGF16}, descartado por desplazar el objetivo 
+hacia un problema de detección de objetos en lugar del aprendizaje de la tarea en sí.
+
+\section{Recursos y limitaciones}
+Para el desarrollo del proyecto se emplearon dos equipos: un ordenador de
+sobremesa, encargado de ejecutar los entrenamientos, alojar el
+servidor de \textit{Minecraft}, ejecutar el agente y el desarrollo general; y un portátil MacBook Air M3,
+empleado como equipo secundario. Sus características se resumen en la Tabla~\ref{tab:hardware}
+(página~\pageref{tab:hardware}).
+
+\begin{table}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{
+  \small
+  \rowcolors{2}{white}{udcgray!25}
+  \begin{tabular}{c|cc}
+  \rowcolor{udcpink!25}
+  \textbf{Característica} & \textbf{Sobremesa} & \textbf{MacBook Air M3} \\\hline
+  \acrshort{cpu} & AMD Ryzen 9 5900X (\num{12}\,C/\num{24}\,T) & Apple M3 (\num{8} núcleos) \\
+  \acrshort{ram} & \qty{32}{GB} & \qty{16}{GB} \\
+  \acrshort{gpu} & NVIDIA RTX 3060 \qty{12}{GB} & Integrada (\num{10} núcleos) \\
+  Uso & Entrenamiento y desarrollo & Equipo complementario \\
+  \end{tabular}
+  }
+  \caption{Equipos empleados en el desarrollo del proyecto.}
+  \label{tab:hardware}
+\end{table}
+
+La principal limitación de recursos fue el tiempo de entrenamiento. Si bien el
+sistema no generaba una gran carga computacional, la ejecución de las acciones
+suponía una limitación temporal. El entorno de simulación era el cuello de
+botella a la hora de procesar las acciones. Si el agente realiza la acción de
+talar y esta requiere \numrange{2}{3} segundos para completarse, en un episodio de \num{100}
+pasos el tiempo de ejecución asciende a \numrange{200}{300} segundos. Considerando la ejecución
+completa, con \num{300} episodios se alcanzan entre \num{16} y \num{25} horas de entrenamiento, lo
+que limita el número de experimentos que se pueden realizar.
+
+La única paralelización posible sería ejecutar varios agentes a la vez o usar
+varios equipos simultáneamente, pero no se hizo debido a la limitación de recursos
+computacionales disponibles y a la dificultad de coordinar el desarrollo en
+varios equipos a la vez.
+
+\section{Conjuntos de Datos}
+A diferencia de un problema de clasificación supervisada con conjuntos de datos
+estáticos, en este trabajo los datos provienen de la interacción de agentes con
+el entorno. Se consideraron dos conjuntos de demostraciones, seleccionando el
+primero como conjunto final.
+
+\paragraph{\textit{Dataset} \gls{htn}:} este conjunto de datos de elaboración propia se compone de las 
+trayectorias producidas por el agente simbólico al resolver la tarea de
+\textit{woodcutting}. Estas trayectorias se registran como pares \textit{OBSERVACIÓN-ACCIÓN} 
+(definidos en el Capítulo~\ref{chap:arquitectura}) y conforman el
+conjunto de demostraciones de un experto determinista e interpretable. Este
+\textit{dataset} permite la comparación entre el comportamiento simbólico y las
+técnicas de aprendizaje profundo. Se realiza una pequeña limpieza descartando las 
+muestras de acciones poco representativas, quedando un total de \num{118} episodios y
+\num{4094} \textit{steps} (\num{4069} tras la limpieza), como se detalla en la Tabla~\ref{tab:datasets} (página~\pageref{tab:datasets}).
+
+\paragraph{\textit{Dataset} MineRL Treechop-v0:} este conjunto de demostraciones humanas~\cite{guss2019minerl}
+se compone de \num{210} episodios (todos con éxito) y aproximadamente \num{453000}
+\textit{steps}, con una mediana de \num{64} troncos recogidos por episodio.
+Su análisis exploratorio reveló que el movimiento de cámara humano (mediana de
+\ang{0.75}/\ang{0.90} por \textit{step}) es aproximadamente diez veces
+más fino que el paso de cámara de la discretización empleada por los agentes discretos, lo que impide trasladar
+directamente las demostraciones humanas a su espacio de acción. Además, el \textit{dataset} humano
+presenta limitaciones al ser utilizado fuera del entorno de desarrollo de \textit{MineRL}.
+Entre estas limitaciones se encuentran: la estructura de los datos, el formato de las acciones y 
+el formato de las observaciones, lo que dificulta su uso directo para el
+entrenamiento de agentes en nuestro entorno de simulación. Por último, \textit{MineRL} solo proporciona información
+visual, por lo que no permite obtener el vector de estado ni las señales de percepción
+(\textit{tree\_visible}, \textit{tree\_distance}) de las que dependen nuestros agentes. 
+
+\begin{table}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{
+  \small
+  \rowcolors{2}{white}{udcgray!25}
+  \begin{tabular}{c|cc}
+  \rowcolor{udcpink!25}
+  \textbf{Propiedad} & \textbf{{htn}} & \textbf{MineRL Treechop-v0} \\\hline
+  Origen         & Planificador simbólico (propio) & Demostraciones humanas \\
+  Episodios      & \num{118} & \num{210} \\
+  \textit{Steps} (bruto)  & \num{4094} & $\sim$\num{453000} \\
+  \textit{Steps} (limpio) & \num{4069} & $\sim$\num{453000} \\
+  \end{tabular}
+  }
+  \caption[Conjuntos de datos analizados]{Comparación de los conjuntos de datos analizados en el trabajo.}
+  \label{tab:datasets}
+\end{table}
+
+Cabe mencionar además que el \gls{framework} de \textit{MineRL} se intentó utilizar, pero actualmente ya no recibe mantenimiento y no es compatible con las versiones actuales de \gls{gymnasium}~\cite{minerl_issue788}. Por otra parte,
+este tipo de \textit{datasets} están pensados para ser utilizados dentro de su propio \gls{framework}, 
+lo que dificulta su uso en entornos de simulación externos como el empleado en este proyecto.

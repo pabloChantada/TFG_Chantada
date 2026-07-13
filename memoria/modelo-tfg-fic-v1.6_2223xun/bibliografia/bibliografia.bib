@@ -1,0 +1,869 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% BIBLIOGRAFÍA                                                                 %
+%                                                                              %
+% Objetivo: Recopilar las referencias a información utilizadas y/o algunas     %
+%           otras que puedan resultar interesantes                             %
+%                                                                              %
+% Organización: las referencias están agrupadas según la sección del          %
+%   capítulo "Trabajo relacionado y estado del arte" (contido/2_estado_arte)   %
+%   en la que se citan. Una misma referencia puede citarse en varias           %
+%   secciones; se ubica en su grupo principal.                                 %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%=============================================================================%
+% PLANTILLA — Entradas de ejemplo del modelo TFG-FIC (no citadas en el texto) %
+%=============================================================================%
+
+@Book{ErlangBook,
+  author = {Joe Armstrong and Mike Williams and Robert Virding},
+  title = {Concurrent Programming in Erlang},
+  edition = {2},
+  publisher = {Prentice Hall},
+  year = {1993}
+}
+@Misc{ErlangWebBook,
+  language = {galician},
+  author = {Fred Hébert},
+  title = {Learn You Some Erlang for Great Good!},
+  url = {https://learnyousomeerlang.com/},
+  year = 2013,
+  note = {\dataacceso{} \today}
+}
+
+
+%=============================================================================%
+% 2.1 — Videojuegos como entornos de prueba para IA                          %
+%        Juegos clásicos y de estrategia resueltos con aprendizaje por        %
+%        refuerzo (ajedrez, Go, StarCraft, Dota 2).                           %
+%=============================================================================%
+
+% Ajedrez
+@article{DBLP:journals/corr/abs-1712-01815,
+  author       = {David Silver and
+                  Thomas Hubert and
+                  Julian Schrittwieser and
+                  Ioannis Antonoglou and
+                  Matthew Lai and
+                  Arthur Guez and
+                  Marc Lanctot and
+                  Laurent Sifre and
+                  Dharshan Kumaran and
+                  Thore Graepel and
+                  Timothy P. Lillicrap and
+                  Karen Simonyan and
+                  Demis Hassabis},
+  title        = {Mastering Chess and Shogi by Self-Play with a General Reinforcement
+                  Learning Algorithm},
+  journal      = {CoRR},
+  volume       = {abs/1712.01815},
+  year         = {2017},
+  url          = {http://arxiv.org/abs/1712.01815},
+  eprinttype   = {arXiv},
+  eprint       = {1712.01815},
+  timestamp    = {Wed, 24 Sep 2025 16:21:16 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-1712-01815.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% Go — AlphaGo: redes profundas + búsqueda en árbol (Silver et al.)
+@article{DBLP:journals/nature/SilverHMGSDSAPL16,
+  author       = {David Silver and
+                  Aja Huang and
+                  Chris J. Maddison and
+                  Arthur Guez and
+                  Laurent Sifre and
+                  George van den Driessche and
+                  Julian Schrittwieser and
+                  Ioannis Antonoglou and
+                  Vedavyas Panneershelvam and
+                  Marc Lanctot and
+                  Sander Dieleman and
+                  Dominik Grewe and
+                  John Nham and
+                  Nal Kalchbrenner and
+                  Ilya Sutskever and
+                  Timothy P. Lillicrap and
+                  Madeleine Leach and
+                  Koray Kavukcuoglu and
+                  Thore Graepel and
+                  Demis Hassabis},
+  title        = {Mastering the game of Go with deep neural networks and tree search},
+  journal      = {Nat.},
+  volume       = {529},
+  number       = {7587},
+  pages        = {484--489},
+  year         = {2016},
+  url          = {https://doi.org/10.1038/nature16961},
+  doi          = {10.1038/NATURE16961},
+  timestamp    = {Wed, 24 Sep 2025 16:21:16 +0200},
+  biburl       = {https://dblp.org/rec/journals/nature/SilverHMGSDSAPL16.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% StarCraft II — AlphaStar: multi-agente a nivel gran maestro (Vinyals et al.)
+@article{DBLP:journals/nature/VinyalsBCMDCCPE19,
+  author       = {Oriol Vinyals and
+                  Igor Babuschkin and
+                  Wojciech M. Czarnecki and
+                  Micha{\"{e}}l Mathieu and
+                  Andrew Dudzik and
+                  Junyoung Chung and
+                  David H. Choi and
+                  Richard Powell and
+                  Timo Ewalds and
+                  Petko Georgiev and
+                  Junhyuk Oh and
+                  Dan Horgan and
+                  Manuel Kroiss and
+                  Ivo Danihelka and
+                  Aja Huang and
+                  Laurent Sifre and
+                  Trevor Cai and
+                  John P. Agapiou and
+                  Max Jaderberg and
+                  Alexander Sasha Vezhnevets and
+                  R{\'{e}}mi Leblond and
+                  Tobias Pohlen and
+                  Valentin Dalibard and
+                  David Budden and
+                  Yury Sulsky and
+                  James Molloy and
+                  Tom Le Paine and
+                  {\c{C}}aglar G{\"{u}}l{\c{c}}ehre and
+                  Ziyu Wang and
+                  Tobias Pfaff and
+                  Yuhuai Wu and
+                  Roman Ring and
+                  Dani Yogatama and
+                  Dario W{\"{u}}nsch and
+                  Katrina McKinney and
+                  Oliver Smith and
+                  Tom Schaul and
+                  Timothy P. Lillicrap and
+                  Koray Kavukcuoglu and
+                  Demis Hassabis and
+                  Chris Apps and
+                  David Silver},
+  title        = {Grandmaster level in StarCraft {II} using multi-agent reinforcement
+                  learning},
+  journal      = {Nat.},
+  volume       = {575},
+  number       = {7782},
+  pages        = {350--354},
+  year         = {2019},
+  url          = {https://doi.org/10.1038/s41586-019-1724-z},
+  doi          = {10.1038/S41586-019-1724-Z},
+  timestamp    = {Wed, 24 Sep 2025 16:21:17 +0200},
+  biburl       = {https://dblp.org/rec/journals/nature/VinyalsBCMDCCPE19.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% Dota 2 — OpenAI Five: RL profundo a gran escala (Berner et al.)
+@article{DBLP:journals/corr/abs-1912-06680,
+  author       = {Christopher Berner and
+                  Greg Brockman and
+                  Brooke Chan and
+                  Vicki Cheung and
+                  Przemyslaw Debiak and
+                  Christy Dennison and
+                  David Farhi and
+                  Quirin Fischer and
+                  Shariq Hashme and
+                  Christopher Hesse and
+                  Rafal J{\'{o}}zefowicz and
+                  Scott Gray and
+                  Catherine Olsson and
+                  Jakub Pachocki and
+                  Michael Petrov and
+                  Henrique Pond{\'{e}} de Oliveira Pinto and
+                  Jonathan Raiman and
+                  Tim Salimans and
+                  Jeremy Schlatter and
+                  Jonas Schneider and
+                  Szymon Sidor and
+                  Ilya Sutskever and
+                  Jie Tang and
+                  Filip Wolski and
+                  Susan Zhang},
+  title        = {Dota 2 with Large Scale Deep Reinforcement Learning},
+  journal      = {CoRR},
+  volume       = {abs/1912.06680},
+  year         = {2019},
+  url          = {http://arxiv.org/abs/1912.06680},
+  eprinttype   = {arXiv},
+  eprint       = {1912.06680},
+  timestamp    = {Wed, 03 Jun 2020 10:56:28 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-1912-06680.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+%=============================================================================%
+% 2.2 — Técnicas de IA en videojuegos                                        %
+%        De la búsqueda simbólica clásica a los algoritmos de RL profundo     %
+%        (DQN/PPO/SAC) y, finalmente, los transformers y LLM.                 %
+%=============================================================================%
+
+% Deep Blue — búsqueda en árbol + heurísticas; ganó a Kasparov (Campbell et al.)
+@article{DBLP:journals/ai/CampbellHH02,
+  author       = {Murray Campbell and
+                  A. Joseph Hoane Jr. and
+                  Feng{-}Hsiung Hsu},
+  title        = {Deep Blue},
+  journal      = {Artif. Intell.},
+  volume       = {134},
+  number       = {1-2},
+  pages        = {57--83},
+  year         = {2002},
+  url          = {https://doi.org/10.1016/S0004-3702(01)00129-1},
+  doi          = {10.1016/S0004-3702(01)00129-1},
+  timestamp    = {Tue, 15 Sep 2020 14:50:43 +0200},
+  biburl       = {https://dblp.org/rec/journals/ai/CampbellHH02.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% DQN — control a nivel humano en Atari; RL profundo (Mnih et al.)
+% (También se cita en §2.1 como primera aproximación de RL profundo en juegos.)
+@article{DBLP:journals/nature/MnihKSRVBGRFOPB15,
+  author       = {Volodymyr Mnih and
+                  Koray Kavukcuoglu and
+                  David Silver and
+                  Andrei A. Rusu and
+                  Joel Veness and
+                  Marc G. Bellemare and
+                  Alex Graves and
+                  Martin A. Riedmiller and
+                  Andreas Fidjeland and
+                  Georg Ostrovski and
+                  Stig Petersen and
+                  Charles Beattie and
+                  Amir Sadik and
+                  Ioannis Antonoglou and
+                  Helen King and
+                  Dharshan Kumaran and
+                  Daan Wierstra and
+                  Shane Legg and
+                  Demis Hassabis},
+  title        = {Human-level control through deep reinforcement learning},
+  journal      = {Nat.},
+  volume       = {518},
+  number       = {7540},
+  pages        = {529--533},
+  year         = {2015},
+  url          = {https://doi.org/10.1038/nature14236},
+  doi          = {10.1038/NATURE14236},
+  timestamp    = {Wed, 24 Sep 2025 16:21:16 +0200},
+  biburl       = {https://dblp.org/rec/journals/nature/MnihKSRVBGRFOPB15.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% VizDoom — entorno 3D FPS para RL (Kempka et al.)
+@inproceedings{kempka2016vizdoom,
+  author    = {Michal Kempka and Marek Wydmuch and Grzegorz Runc and Jakub Toczek and Wojciech Ja{\'s}kowski},
+  title     = {{ViZDoom}: A {Doom}-based {AI} Research Platform for Visual Reinforcement Learning},
+  booktitle = {Proceedings of the 2016 IEEE Conference on Computational Intelligence and Games (CIG)},
+  pages     = {1--8},
+  year      = {2016},
+  publisher = {IEEE}
+}
+
+% PPO — Proximal Policy Optimization (Schulman et al.)
+@article{DBLP:journals/corr/SchulmanWDRK17,
+  author       = {John Schulman and
+                  Filip Wolski and
+                  Prafulla Dhariwal and
+                  Alec Radford and
+                  Oleg Klimov},
+  title        = {Proximal Policy Optimization Algorithms},
+  journal      = {CoRR},
+  volume       = {abs/1707.06347},
+  year         = {2017},
+  url          = {http://arxiv.org/abs/1707.06347},
+  eprinttype   = {arXiv},
+  eprint       = {1707.06347},
+  timestamp    = {Mon, 13 Aug 2018 16:47:34 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/SchulmanWDRK17.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% SAC — Soft Actor-Critic, RL off-policy de máxima entropía (Haarnoja et al.)
+@article{DBLP:journals/corr/abs-1801-01290,
+  author       = {Tuomas Haarnoja and
+                  Aurick Zhou and
+                  Pieter Abbeel and
+                  Sergey Levine},
+  title        = {Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning
+                  with a Stochastic Actor},
+  journal      = {CoRR},
+  volume       = {abs/1801.01290},
+  year         = {2018},
+  url          = {http://arxiv.org/abs/1801.01290},
+  eprinttype   = {arXiv},
+  eprint       = {1801.01290},
+  timestamp    = {Mon, 13 Aug 2018 16:48:10 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-1801-01290.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% Transformers — "Attention is All You Need" (Vaswani et al.)
+@inproceedings{DBLP:conf/nips/VaswaniSPUJGKP17,
+  author       = {Ashish Vaswani and
+                  Noam Shazeer and
+                  Niki Parmar and
+                  Jakob Uszkoreit and
+                  Llion Jones and
+                  Aidan N. Gomez and
+                  Lukasz Kaiser and
+                  Illia Polosukhin},
+  editor       = {Isabelle Guyon and
+                  Ulrike von Luxburg and
+                  Samy Bengio and
+                  Hanna M. Wallach and
+                  Rob Fergus and
+                  S. V. N. Vishwanathan and
+                  Roman Garnett},
+  title        = {Attention is All you Need},
+  booktitle    = {Advances in Neural Information Processing Systems 30: Annual Conference
+                  on Neural Information Processing Systems 2017, December 4-9, 2017,
+                  Long Beach, CA, {USA}},
+  pages        = {5998--6008},
+  year         = {2017},
+  url          = {https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html},
+  timestamp    = {Thu, 21 Jan 2021 15:15:21 +0100},
+  biburl       = {https://dblp.org/rec/conf/nips/VaswaniSPUJGKP17.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% Voyager — agente embodied con LLM que genera código en Minecraft (Wang et al.)
+% (Se cita aquí como ejemplo de LLM en juegos y de nuevo en §2.3.)
+@article{DBLP:journals/corr/abs-2305-16291,
+  author       = {Guanzhi Wang and
+                  Yuqi Xie and
+                  Yunfan Jiang and
+                  Ajay Mandlekar and
+                  Chaowei Xiao and
+                  Yuke Zhu and
+                  Linxi Fan and
+                  Anima Anandkumar},
+  title        = {Voyager: An Open-Ended Embodied Agent with Large Language Models},
+  journal      = {CoRR},
+  volume       = {abs/2305.16291},
+  year         = {2023},
+  url          = {https://doi.org/10.48550/arXiv.2305.16291},
+  doi          = {10.48550/ARXIV.2305.16291},
+  eprinttype   = {arXiv},
+  eprint       = {2305.16291},
+  timestamp    = {Tue, 29 Aug 2023 08:18:42 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2305-16291.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+%=============================================================================%
+% 2.3 — Minecraft como entorno de investigación                              %
+%        Datasets, benchmarks y agentes LLM específicos de Minecraft.         %
+%=============================================================================%
+
+% MineRL — dataset a gran escala de demostraciones humanas en Minecraft (Guss et al.)
+% (También se cita en §2.4 como referencia de la competición MineRL.)
+@inproceedings{guss2019minerl,
+  author       = {William H. Guss and
+                  Brandon Houghton and
+                  Nicholay Topin and
+                  Phillip Wang and
+                  Cayden R. Codel and
+                  Manuela Veloso and
+                  Ruslan Salakhutdinov},
+  editor       = {Sarit Kraus},
+  title        = {MineRL: {A} Large-Scale Dataset of Minecraft Demonstrations},
+  booktitle    = {Proceedings of the Twenty-Eighth International Joint Conference on
+                  Artificial Intelligence, {IJCAI} 2019, Macao, China, August 10-16,
+                  2019},
+  pages        = {2442--2448},
+  publisher    = {ijcai.org},
+  year         = {2019},
+  url          = {https://doi.org/10.24963/ijcai.2019/339},
+  doi          = {10.24963/IJCAI.2019/339},
+  timestamp    = {Sun, 02 Nov 2025 21:27:16 +0100},
+  biburl       = {https://dblp.org/rec/conf/ijcai/GussHTWCVS19.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% MineDojo — benchmark abierto con conocimiento multimodal a escala de internet (Fan et al.)
+@inproceedings{DBLP:conf/nips/FanWJMYZTHZA22,
+  author       = {Linxi Fan and
+                  Guanzhi Wang and
+                  Yunfan Jiang and
+                  Ajay Mandlekar and
+                  Yuncong Yang and
+                  Haoyi Zhu and
+                  Andrew Tang and
+                  De{-}An Huang and
+                  Yuke Zhu and
+                  Anima Anandkumar},
+  editor       = {Sanmi Koyejo and
+                  S. Mohamed and
+                  A. Agarwal and
+                  Danielle Belgrave and
+                  K. Cho and
+                  A. Oh},
+  title        = {MineDojo: Building Open-Ended Embodied Agents with Internet-Scale
+                  Knowledge},
+  booktitle    = {Advances in Neural Information Processing Systems 35: Annual Conference
+                  on Neural Information Processing Systems 2022, NeurIPS 2022, New Orleans,
+                  LA, USA, November 28 - December 9, 2022},
+  year         = {2022},
+  url          = {http://papers.nips.cc/paper\_files/paper/2022/hash/74a67268c5cc5910f64938cac4526a90-Abstract-Datasets\_and\_Benchmarks.html},
+  timestamp    = {Mon, 08 Jan 2024 16:31:30 +0100},
+  biburl       = {https://dblp.org/rec/conf/nips/FanWJMYZTHZA22.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% Mindcraft — framework multi-agente LLM para razonamiento embodied (White et al.)
+@article{mindcraft2025,
+  title = {Collaborating Action by Action: A Multi-agent LLM Framework for Embodied Reasoning},
+  author = {White*, Isadora and Nottingham*, Kolby and Maniar, Ayush and Robinson, Max and Lillemark, Hansen and Maheshwari, Mehul and Qin, Lianhui and Ammanabrolu, Prithviraj},
+  journal = {arXiv preprint arXiv:2504.17950},
+  year = {2025},
+  url = {https://arxiv.org/abs/2504.17950},
+}
+
+% ViT en minecraft
+@article{oasis2024,
+  author    = {Decart and Julian Quevedo and Quinn McIntyre and Spruce Campbell and Xinlei Chen and Robert Wachen},
+  title     = {Oasis: A Universe in a Transformer},
+  year      = {2024},
+  url       = {https://oasis-model.github.io/}
+}
+
+%=============================================================================%
+% 2.4 — Técnicas de IA aplicadas a Minecraft                                 %
+%        Fundamentos de los tres pilares comparados en este TFG:             %
+%        planificación simbólica (HTN), imitación (IL) y refuerzo (RL).      %
+%=============================================================================%
+
+% --- Planificación simbólica (HTN) ---
+
+% HTN — UMCP: procedimiento sólido y completo de planificación HTN (Erol et al.)
+@inproceedings{DBLP:conf/aips/ErolHN94,
+  author       = {Kutluhan Erol and
+                  James A. Hendler and
+                  Dana S. Nau},
+  editor       = {Kristian J. Hammond},
+  title        = {{UMCP:} {A} Sound and Complete Procedure for Hierarchical Task-network
+                  Planning},
+  booktitle    = {Proceedings of the Second International Conference on Artificial Intelligence
+                  Planning Systems, University of Chicago, Chicago, Illinois, USA, June
+                  13-15, 1994},
+  pages        = {249--254},
+  publisher    = {{AAAI}},
+  year         = {1994},
+  url          = {http://www.aaai.org/Library/AIPS/1994/aips94-042.php},
+  timestamp    = {Fri, 05 Feb 2021 17:14:58 +0100},
+  biburl       = {https://dblp.org/rec/conf/aips/ErolHN94.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% HTN en juegos — planificación HTN adversarial para RTS complejos (Ontañón y Buro)
+@inproceedings{DBLP:conf/ijcai/OntanonB15,
+  author       = {Santiago Onta{\~{n}}{\'{o}}n and
+                  Michael Buro},
+  editor       = {Qiang Yang and
+                  Michael J. Wooldridge},
+  title        = {Adversarial Hierarchical-Task Network Planning for Complex Real-Time
+                  Games},
+  booktitle    = {Proceedings of the Twenty-Fourth International Joint Conference on
+                  Artificial Intelligence, {IJCAI} 2015, Buenos Aires, Argentina, July
+                  25-31, 2015},
+  pages        = {1652--1658},
+  publisher    = {{AAAI} Press},
+  year         = {2015},
+  url          = {http://ijcai.org/Abstract/15/236},
+  timestamp    = {Tue, 20 Aug 2019 16:16:43 +0200},
+  biburl       = {https://dblp.org/rec/conf/ijcai/OntanonB15.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% --- Aprendizaje por imitación (IL) ---
+
+% VPT — Video PreTraining: imitación a gran escala desde vídeo en Minecraft (Baker et al.)
+@inproceedings{DBLP:conf/nips/BakerAZHTEHSC22,
+  author       = {Bowen Baker and
+                  Ilge Akkaya and
+                  Peter Zhokhov and
+                  Joost Huizinga and
+                  Jie Tang and
+                  Adrien Ecoffet and
+                  Brandon Houghton and
+                  Raul Sampedro and
+                  Jeff Clune},
+  editor       = {Sanmi Koyejo and
+                  S. Mohamed and
+                  A. Agarwal and
+                  Danielle Belgrave and
+                  K. Cho and
+                  A. Oh},
+  title        = {Video PreTraining {(VPT):} Learning to Act by Watching Unlabeled Online
+                  Videos},
+  booktitle    = {Advances in Neural Information Processing Systems 35: Annual Conference
+                  on Neural Information Processing Systems 2022, NeurIPS 2022, New Orleans,
+                  LA, USA, November 28 - December 9, 2022},
+  year         = {2022},
+  url          = {http://papers.nips.cc/paper\_files/paper/2022/hash/9c7008aff45b5d8f0973b23e1a22ada0-Abstract-Conference.html},
+  timestamp    = {Sun, 04 Feb 2024 17:54:46 +0100},
+  biburl       = {https://dblp.org/rec/conf/nips/BakerAZHTEHSC22.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% DAgger — reducción de la imitación a aprendizaje online sin arrepentimiento (Ross et al.)
+@inproceedings{DBLP:journals/jmlr/RossGB11,
+  author       = {St{\'{e}}phane Ross and
+                  Geoffrey J. Gordon and
+                  Drew Bagnell},
+  editor       = {Geoffrey J. Gordon and
+                  David B. Dunson and
+                  Miroslav Dud{\'{\i}}k},
+  title        = {A Reduction of Imitation Learning and Structured Prediction to No-Regret
+                  Online Learning},
+  booktitle    = {Proceedings of the Fourteenth International Conference on Artificial
+                  Intelligence and Statistics, {AISTATS} 2011, Fort Lauderdale, USA,
+                  April 11-13, 2011},
+  series       = {{JMLR} Proceedings},
+  pages        = {627--635},
+  publisher    = {JMLR.org},
+  year         = {2011},
+  url          = {http://proceedings.mlr.press/v15/ross11a/ross11a.pdf},
+  timestamp    = {Wed, 29 May 2019 08:41:48 +0200},
+  biburl       = {https://dblp.org/rec/journals/jmlr/RossGB11.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% --- Aprendizaje por refuerzo avanzado / modelos de mundo ---
+
+% DreamerV3 — dominio de tareas diversas mediante world models (Hafner et al.)
+@article{DBLP:journals/corr/abs-2301-04104,
+  author       = {Danijar Hafner and
+                  Jurgis Pasukonis and
+                  Jimmy Ba and
+                  Timothy P. Lillicrap},
+  title        = {Mastering Diverse Domains through World Models},
+  journal      = {CoRR},
+  volume       = {abs/2301.04104},
+  year         = {2023},
+  url          = {https://doi.org/10.48550/arXiv.2301.04104},
+  doi          = {10.48550/ARXIV.2301.04104},
+  eprinttype   = {arXiv},
+  eprint       = {2301.04104},
+  timestamp    = {Thu, 19 Jan 2023 15:40:01 +0100},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2301-04104.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+%=============================================================================%
+% 3 — Metodología y planificación
+%=============================================================================%
+
+% Guia Scrum - (Schwaber y Sutherland)
+@manual{schwaber2020scrum,
+  author       = {Ken Schwaber and
+                  Jeff Sutherland},
+  title        = {The Scrum Guide: The Definitive Guide to Scrum: The Rules of the Game},
+  year         = {2020},
+  url          = {https://scrumguides.org},
+  note         = {Available at Scrum Guides},
+  timestamp    = {Thu, 04 Jun 2026 18:16:00 +0200}
+}
+
+% RL + demostraciones en Minecraft — aprendizaje eficiente a partir de demostraciones (Scheller et al.)
+@article{DBLP:journals/corr/abs-2003-06066,
+  author       = {Christian Scheller and
+                  Yanick Schraner and
+                  Manfred Vogel},
+  title        = {Sample Efficient Reinforcement Learning through Learning from Demonstrations
+                  in Minecraft},
+  journal      = {CoRR},
+  volume       = {abs/2003.06066},
+  year         = {2020},
+  url          = {https://arxiv.org/abs/2003.06066},
+  eprinttype   = {arXiv},
+  eprint       = {2003.06066},
+  timestamp    = {Tue, 17 Mar 2020 14:18:27 +0100},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2003-06066.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+% YOLO — algoritmo de detección de objetos en tiempo real (Redmon et al.)
+@inproceedings{DBLP:conf/cvpr/RedmonDGF16,
+  author       = {Joseph Redmon and
+                  Santosh Kumar Divvala and
+                  Ross B. Girshick and
+                  Ali Farhadi},
+  title        = {You Only Look Once: Unified, Real-Time Object Detection},
+  booktitle    = {2016 {IEEE} Conference on Computer Vision and Pattern Recognition,
+                  {CVPR} 2016, Las Vegas, NV, USA, June 27-30, 2016},
+  pages        = {779--788},
+  publisher    = {{IEEE} Computer Society},
+  year         = {2016},
+  url          = {https://doi.org/10.1109/CVPR.2016.91},
+  doi          = {10.1109/CVPR.2016.91},
+  timestamp    = {Fri, 24 Mar 2023 00:03:00 +0100},
+  biburl       = {https://dblp.org/rec/conf/cvpr/RedmonDGF16.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+%=============================================================================%
+% 4 — Arquitectura y diseño del sistema
+%=============================================================================%
+
+@article{DBLP:journals/corr/abs-2407-17032,
+  author       = {Mark Towers and
+                  Ariel Kwiatkowski and
+                  Jordan K. Terry and
+                  John U. Balis and
+                  Gianluca De Cola and
+                  Tristan Deleu and
+                  Manuel Goul{\~{a}}o and
+                  Andreas Kallinteris and
+                  Markus Krimmel and
+                  Arjun KG and
+                  Rodrigo Perez{-}Vicente and
+                  Andrea Pierr{\'{e}} and
+                  Sander Schulhoff and
+                  Jun Jet Tai and
+                  Hannah Tan and
+                  Omar G. Younis},
+  title        = {Gymnasium: {A} Standard Interface for Reinforcement Learning Environments},
+  journal      = {CoRR},
+  volume       = {abs/2407.17032},
+  year         = {2024},
+  url          = {https://doi.org/10.48550/arXiv.2407.17032},
+  doi          = {10.48550/ARXIV.2407.17032},
+  eprinttype   = {arXiv},
+  eprint       = {2407.17032},
+  timestamp    = {Sun, 01 Feb 2026 13:36:25 +0100},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2407-17032.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@misc{mineflayer,
+  author = {Rhein, S. and contributors},
+  title = {Mineflayer: Create Minecraft bots with a Node.js API},
+  url = {https://github.com/PrismarineJS/mineflayer},
+  version = {4.37.1},
+  year = {n.d.}
+}
+
+% MineRL — issue de instalación/compilación (dependencia gym); ejemplo del abandono del proyecto
+@misc{minerl_issue788,
+  author       = {{minerllabs}},
+  title        = {problem with gym while installing minerl (issue \#788)},
+  howpublished = {GitHub issue, \url{https://github.com/minerllabs/minerl/issues/788}},
+  year         = {2024},
+  note         = {\dataacceso{} \today}
+}
+
+@misc{puppeteer,
+  author = {{Google} and contributors},
+  title = {Puppeteer: JavaScript API for Chrome and Firefox},
+  url = {https://github.com/puppeteer/puppeteer},
+  year = {n.d.}
+}
+
+@misc{nodejs,
+  author = {{OpenJS Foundation}},
+  title = {Node.js: JavaScript runtime built on Chrome's V8 JavaScript engine},
+  url = {https://nodejs.org},
+  year = {n.d.}
+}
+
+@misc{papermc,
+  author = {{PaperMC}},
+  title = {Paper: High performance Minecraft server software},
+  url = {https://papermc.io},
+  year = {n.d.}
+}
+
+
+%=============================================================================%
+% 5 — HTN
+%=============================================================================%
+
+@article{DBLP:journals/ai/FikesN71,
+  author       = {Richard Fikes and
+                  Nils J. Nilsson},
+  title        = {{STRIPS:} {A} New Approach to the Application of Theorem Proving to
+                  Problem Solving},
+  journal      = {Artif. Intell.},
+  volume       = {2},
+  number       = {3/4},
+  pages        = {189--208},
+  year         = {1971},
+  url          = {https://doi.org/10.1016/0004-3702(71)90010-5},
+  doi          = {10.1016/0004-3702(71)90010-5},
+  timestamp    = {Wed, 14 Nov 2018 10:50:00 +0100},
+  biburl       = {https://dblp.org/rec/journals/ai/FikesN71.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{DBLP:conf/ecai/KautzS92,
+  author       = {Henry A. Kautz and
+                  Bart Selman},
+  editor       = {Bernd Neumann},
+  title        = {Planning as Satisfiability},
+  booktitle    = {10th European Conference on Artificial Intelligence, {ECAI} 92, Vienna,
+                  Austria, August 3-7, 1992. Proceedings},
+  pages        = {359--363},
+  publisher    = {John Wiley and Sons},
+  year         = {1992},
+  timestamp    = {Wed, 31 Jul 2019 08:45:08 +0200},
+  biburl       = {https://dblp.org/rec/conf/ecai/KautzS92.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+%=============================================================================%
+% 7 — IL
+%=============================================================================%
+
+@inproceedings{DBLP:conf/cvpr/DengDSLL009,
+  author       = {Jia Deng and
+                  Wei Dong and
+                  Richard Socher and
+                  Li{-}Jia Li and
+                  Kai Li and
+                  Li Fei{-}Fei},
+  title        = {ImageNet: {A} large-scale hierarchical image database},
+  booktitle    = {2009 {IEEE} Computer Society Conference on Computer Vision and Pattern
+                  Recognition {(CVPR} 2009), 20-25 June 2009, Miami, Florida, {USA}},
+  pages        = {248--255},
+  publisher    = {{IEEE} Computer Society},
+  year         = {2009},
+  url          = {https://doi.org/10.1109/CVPR.2009.5206848},
+  doi          = {10.1109/CVPR.2009.5206848},
+  timestamp    = {Fri, 08 Nov 2024 10:13:55 +0100},
+  biburl       = {https://dblp.org/rec/conf/cvpr/DengDSLL009.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{DBLP:journals/tcyb/ZareKKN24,
+  author       = {Maryam Zare and
+                  Parham M. Kebria and
+                  Abbas Khosravi and
+                  Saeid Nahavandi},
+  title        = {A Survey of Imitation Learning: Algorithms, Recent Developments, and
+                  Challenges},
+  journal      = {{IEEE} Trans. Cybern.},
+  volume       = {54},
+  number       = {12},
+  pages        = {7173--7186},
+  year         = {2024},
+  url          = {https://doi.org/10.1109/TCYB.2024.3395626},
+  doi          = {10.1109/TCYB.2024.3395626},
+  timestamp    = {Wed, 08 Jan 2025 21:11:59 +0100},
+  biburl       = {https://dblp.org/rec/journals/tcyb/ZareKKN24.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@book{DBLP:books/lib/SuttonB2018,
+  author       = {Richard S. Sutton and
+                  Andrew G. Barto},
+  title        = {Reinforcement learning - an introduction, 2nd Edition},
+  publisher    = {{MIT} Press},
+  year         = {2018},
+  url          = {http://www.incompleteideas.net/book/the-book-2nd.html},
+  timestamp    = {Mon, 17 Mar 2025 15:33:08 +0100},
+  biburl       = {https://dblp.org/rec/books/lib/SuttonB2018.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@book{DBLP:books/wi/Puterman94,
+  author       = {Martin L. Puterman},
+  title        = {Markov Decision Processes: Discrete Stochastic Dynamic Programming},
+  series       = {Wiley Series in Probability and Statistics},
+  publisher    = {Wiley},
+  year         = {1994},
+  url          = {https://doi.org/10.1002/9780470316887},
+  doi          = {10.1002/9780470316887},
+  isbn         = {978-0-47161977-2},
+  timestamp    = {Mon, 22 Jul 2019 15:00:49 +0200},
+  biburl       = {https://dblp.org/rec/books/wi/Puterman94.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{DBLP:journals/ijcv/WuH20,
+  author       = {Yuxin Wu and
+                  Kaiming He},
+  title        = {Group Normalization},
+  journal      = {Int. J. Comput. Vis.},
+  volume       = {128},
+  number       = {3},
+  pages        = {742--755},
+  year         = {2020},
+  url          = {https://doi.org/10.1007/s11263-019-01198-w},
+  doi          = {10.1007/S11263-019-01198-W},
+  timestamp    = {Thu, 09 Apr 2026 09:04:08 +0200},
+  biburl       = {https://dblp.org/rec/journals/ijcv/WuH20.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{DBLP:conf/aaai/HasseltGS16,
+  author       = {Hado van Hasselt and
+                  Arthur Guez and
+                  David Silver},
+  editor       = {Dale Schuurmans and
+                  Michael P. Wellman},
+  title        = {Deep Reinforcement Learning with Double Q-Learning},
+  booktitle    = {Proceedings of the Thirtieth {AAAI} Conference on Artificial Intelligence,
+                  February 12-17, 2016, Phoenix, Arizona, {USA}},
+  pages        = {2094--2100},
+  publisher    = {{AAAI} Press},
+  year         = {2016},
+  url          = {https://doi.org/10.1609/aaai.v30i1.10295},
+  doi          = {10.1609/AAAI.V30I1.10295},
+  timestamp    = {Wed, 24 Sep 2025 16:21:13 +0200},
+  biburl       = {https://dblp.org/rec/conf/aaai/HasseltGS16.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{DBLP:journals/corr/abs-2005-01643,
+  author       = {Sergey Levine and
+                  Aviral Kumar and
+                  George Tucker and
+                  Justin Fu},
+  title        = {Offline Reinforcement Learning: Tutorial, Review, and Perspectives
+                  on Open Problems},
+  journal      = {CoRR},
+  volume       = {abs/2005.01643},
+  year         = {2020},
+  url          = {https://arxiv.org/abs/2005.01643},
+  eprinttype   = {arXiv},
+  eprint       = {2005.01643},
+  timestamp    = {Fri, 08 May 2020 15:04:04 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2005-01643.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@incollection{DBLP:series/lncs/LeCunBOM12,
+  author       = {Yann LeCun and
+                  L{\'{e}}on Bottou and
+                  Genevieve B. Orr and
+                  Klaus{-}Robert M{\"{u}}ller},
+  editor       = {Gr{\'{e}}goire Montavon and
+                  Genevieve B. Orr and
+                  Klaus{-}Robert M{\"{u}}ller},
+  title        = {Efficient BackProp},
+  booktitle    = {Neural Networks: Tricks of the Trade - Second Edition},
+  series       = {Lecture Notes in Computer Science},
+  volume       = {7700},
+  pages        = {9--48},
+  publisher    = {Springer},
+  year         = {2012},
+  url          = {https://doi.org/10.1007/978-3-642-35289-8\_3},
+  doi          = {10.1007/978-3-642-35289-8\_3},
+  timestamp    = {Wed, 25 Sep 2019 17:41:07 +0200},
+  biburl       = {https://dblp.org/rec/series/lncs/LeCunBOM12.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}

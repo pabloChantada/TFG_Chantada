@@ -1,0 +1,125 @@
+\chapter{Árbol de Tareas para la Obtención de un Pico de Hierro}
+\label{apx:htn-iron-decomp}
+\lettrine{E}{n} este apéndice se muestra la descomposición completa de tareas \gls{htn} 
+para la obtención de un pico de hierro en \textit{Minecraft}, mostrando la jerarquía de tareas
+y subtareas que componen cada fase de la progresión (madera, piedra e hierro). Así como las
+tareas de recuperación. 
+
+\begin{figure}[hp!]
+  \centering
+  \begin{forest}
+    for tree={
+      font=\footnotesize, grow'=0, folder, rounded corners, draw,
+      edge={-, semithick}, l sep=4mm, s sep=1.2mm, anchor=west,
+      inner sep=2.5pt,
+    },
+    compuesta/.style={fill=blue!8},
+    [{Obtener pico de hierro}, compuesta
+      [{Fase madera (Ver Figura \ref{fig:htn-wood})}, compuesta]
+      [{Fase piedra (Ver Figura \ref{fig:htn-stone})}, compuesta]
+      [{Fase hierro (Ver Figura \ref{fig:htn-iron})}, compuesta]
+    ]
+  \end{forest}
+  \caption[Árbol de descomposición general del agente simbólico]{Árbol de descomposición general de la progresión
+  hasta el pico de hierro. Las subtareas detalladas de cada fase se desglosan en figuras posteriores.}
+  \label{fig:htn-general}
+\end{figure}
+
+\begin{figure}[hp!]
+  \centering
+  \begin{forest}
+    for tree={
+      font=\footnotesize, grow'=0, folder, rounded corners, draw,
+      edge={-, semithick}, l sep=4mm, s sep=1.2mm, anchor=west,
+      inner sep=2.5pt,
+    },
+    compuesta/.style={fill=blue!8},
+    primitiva/.style={fill=green!12},
+    recup/.style={fill=red!10},
+    [{Fase madera}, compuesta
+      [{Recolectar madera \textit{(chop $\times$5)}}, primitiva]
+      [{Fabricar tablones \textit{(craftItem)}}, primitiva]
+      [{Colocar mesa de trabajo \textit{(ensureCraftingTable)}}, compuesta
+        [{Recolectar madera (si no está en el inventario) \textit{(chop $\times$5)}}, recup]
+        [{Fabricar tablones \textit{(craftItem)}}, primitiva]
+        [{Colocar mesa de trabajo \textit{(placeBlock)}}, primitiva]
+      ]
+      [{Fabricar pico de madera \textit{(craftItem)}}, primitiva]
+    ]
+  \end{forest}
+  \caption[Tarea HTN: Fase Madera]{Detalle del árbol de descomposición para la Fase madera. 
+  Esta fase inicia la progresión y reutiliza primitivas y tareas de recuperación como el \gls{woodcutting}.}
+  \label{fig:htn-wood}
+\end{figure}
+
+\begin{figure}[hp!]
+  \centering
+  \begin{forest}
+    for tree={
+      font=\footnotesize, grow'=0, folder, rounded corners, draw,
+      edge={-, semithick}, l sep=4mm, s sep=1.2mm, anchor=west,
+      inner sep=2.5pt,
+    },
+    compuesta/.style={fill=blue!8},
+    primitiva/.style={fill=green!12},
+    [{Fase piedra}, compuesta
+      [{Minar piedra \textit{(ensureEquipped + mineBlock)}}, compuesta
+        [{Comprobar la herramienta equipada}, primitiva]
+        [{Si no hay pico de madera, fabricar uno}, compuesta
+          [{Fase madera \textit{(Ver Figura \ref{fig:htn-wood})}}, compuesta]
+        ]
+        [{Minar piedra $\times$14}, primitiva]
+      ]
+      [{Fabricar 2 picos de piedra \textit{(craftItem)}}, primitiva]
+    ]
+  \end{forest}
+  \caption[Tarea HTN: Fase Piedra]{Detalle del árbol de descomposición para la Fase piedra. 
+  Si no se dispone de la herramienta adecuada, se invoca la Fase madera para su creación.}
+  \label{fig:htn-stone}
+\end{figure}
+
+\begin{figure}[hp!]
+  \centering
+  \begin{forest}
+    for tree={
+      font=\footnotesize, grow'=0, folder, rounded corners, draw,
+      edge={-, semithick}, l sep=4mm, s sep=1.2mm, anchor=west,
+      inner sep=2.5pt,
+    },
+    compuesta/.style={fill=blue!8},
+    primitiva/.style={fill=green!12},
+    [{Fase hierro}, compuesta
+      [{Buscar mineral de hierro \textit{(heurística)}}, compuesta
+        [{Comprobar si hay hierro visible}, primitiva]
+        [{Si no hay, explorar hasta encontrarlo}, compuesta]
+      ]
+      [{Minar mineral de hierro \textit{(ensureEquipped + mineBlock)}}, compuesta
+        [{Comprobar la herramienta equipada}, primitiva]
+        [{Si no hay pico de piedra, fabricar uno}, compuesta
+          [{Fase piedra \textit{(Ver Figura \ref{fig:htn-stone})}}, compuesta]
+        ]
+        [{Minar hierro $\times$3}, primitiva]
+      ]
+      [{Buscar carbón \textit{(heurística)}}, compuesta
+        [{Comprobar si hay carbón visible}, primitiva]
+        [{Si no hay, explorar hasta encontrarlo}, compuesta]
+      ]
+      [{Minar carbón \textit{(ensureEquipped + mineBlock)}}, compuesta
+        [{Comprobar la herramienta equipada}, primitiva]
+          [{Si no hay pico de piedra, fabricar uno}, compuesta
+            [{Fase piedra \textit{(Ver Figura \ref{fig:htn-stone})}}, compuesta]
+          ]
+          [{Minar carbón $\times$3}, primitiva]
+      ]
+      [{Fundir hierro \textit{(horno + smeltItem)}}, compuesta
+        [{Fabricar horno \textit{(craftItem)}}, primitiva]
+        [{Colocar horno \textit{(placeBlock)}}, primitiva]
+        [{Fundir hierro \textit{(smeltItem)}}, primitiva]
+      ]
+      [{Fabricar pico de hierro \textit{(craftItem)}}, primitiva]
+    ]
+  \end{forest}
+  \caption[Tarea HTN: Fase Hierro]{Detalle del árbol de descomposición para la Fase hierro, 
+  incluyendo la búsqueda heurística de minerales y el proceso de fundición.}
+  \label{fig:htn-iron}
+\end{figure}

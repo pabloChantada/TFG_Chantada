@@ -66,17 +66,17 @@ N_HYBRID_FLAGS = len(HYBRID_FLAGS)
 CAMERA_MAX_RAD = 0.5
 
 REWARD_BREAK_LOG   =  20.0   # romper un tronco: objetivo principal
-REWARD_COLLECT_LOG =  10.0   # recoger el tronco del suelo (señal principal)
-REWARD_HIT_TREE    =   0.5   # golpear un tronco (señal auxiliar, valor bajo)
+REWARD_COLLECT_LOG =  5.0    # recoger el tronco del suelo (señal principal)
+REWARD_HIT_TREE    =   1.0   # golpear un tronco (señal auxiliar, valor bajo)
 REWARD_LOOK_AT_LOG =   0.0   # cursor apuntando a un log (señal de alineación)
-REWARD_APPROACH    =   0.0  # acercarse al árbol visible
-REWARD_STEP        =  -0.01  # aumentado: -0.001 era demasiado pequeño para guiar
-REWARD_WRONG_BLOCK =  -0.01  # penalización por atacar un bloque que no es tronco
+REWARD_APPROACH    =   0.1   # acercarse al árbol visible
+REWARD_STEP        =  -0.05  # aumentado: -0.001 era demasiado pequeño para guiar
+REWARD_WRONG_BLOCK =  -1  # penalización por atacar un bloque que no es tronco
 REWARD_DONE_PENALTY = -5.0   # penalización al terminar el episodio anticipadamente
 REWARD_SUCCESS     =  30.0   # bono al cumplir la condición de éxito (1 tronco recogido)
 LOGS_TO_SUCCESS    =   1     # nº de troncos recogidos que termina el episodio con éxito
-MAX_STEPS          =  300    # más horizonte
-CUMULATIVE_REWARD_THRESHOLD = -20.0  # terminar si reward acumulado cae por debajo
+MAX_STEPS          =  100    # mismo horizonte que la evaluación del IL (IL_EVAL_MAX_STEPS)
+CUMULATIVE_REWARD_THRESHOLD = -10.0  # terminar si reward acumulado cae por debajo
 
 # ── Bridge HTTP (Node.js ↔ Python) ────────────────────────────────────────────
 RL_BRIDGE_PORT = 8766          # puerto del rl_agent.js

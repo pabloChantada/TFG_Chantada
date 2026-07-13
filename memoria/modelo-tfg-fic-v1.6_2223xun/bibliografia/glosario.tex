@@ -1,0 +1,236 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Objetivo: Lista de términos empleados en el documento,                       %
+%           junto con sus respectivos significados.                            %
+%                                                                              %
+% Formato: \newglossaryentry{clave}{name=..., description={...}}               %
+% Nota: glossaries solo imprime las entradas referenciadas en el texto         %
+%       (\gls{clave}). Para forzar la aparición de todas en una versión        %
+%       preliminar, añádase \glsaddall antes de \printglossary en              %
+%       memoria_tfg.tex.                                                       %
+%                                                                              %
+% Organización: entradas agrupadas por capítulo de primera aparición en el     %
+%               texto. Las entradas sin referencia van al final.               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% -----------------------------------------------------------------------
+% Cap. 2 — Estado del Arte
+% -----------------------------------------------------------------------
+
+\newglossaryentry{transformer}{
+    name={\textit{Transformer}},
+    description={Arquitectura de red neuronal basada en mecanismos de atención. Diseñada para el procesamiento del lenguaje natural, aplicada actualmente a muchos otros dominios}
+}
+
+\newglossaryentry{world-model}{
+    name={\textit{world model}},
+    description={Modelo que aprende a simular la dinámica de un entorno, de modo que el agente puede predecir estados futuros a partir de sus acciones}
+}
+
+\newglossaryentry{política}{
+  name={política},
+  description={Función que asigna a cada estado del entorno una acción o una distribución de probabilidad sobre las acciones. Puede ser determinista, si devuelve una única acción, o estocástica, si devuelve una distribución}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 3 — Marco Teórico
+% -----------------------------------------------------------------------
+
+\newglossaryentry{aprendizaje-automatico}{
+    name={aprendizaje automático},
+    description={Rama de la inteligencia artificial cuyos algoritmos aprenden a partir de datos, sin programarse de forma explícita para cada tarea}
+}
+
+\newglossaryentry{aprendizaje-supervisado}{
+    name={aprendizaje supervisado},
+    description={Paradigma de aprendizaje automático en el que el modelo se entrena con datos etiquetados, aprendiendo a asociar cada observación con su salida correspondiente}
+}
+
+\newglossaryentry{distribution-shift}{
+    name={\textit{distribution shift}},
+    description={Caída de rendimiento que se produce cuando los datos que el modelo encuentra en inferencia difieren de los que vio durante el entrenamiento}
+}
+
+\newglossaryentry{offline}{
+    name={\textit{offline}},
+    description={Algoritmo que se entrena sobre un conjunto de datos fijo, recopilado de antemano, sin interactuar con el entorno durante el aprendizaje}
+}
+
+\newglossaryentry{on-policy}{
+  name={on-policy},
+  description={Algoritmo de aprendizaje por refuerzo que aprende sobre la misma política que genera los datos, por lo que no reutiliza transiciones antiguas. Se contrapone a los métodos \textit{off-policy}; PPO es un ejemplo}
+}
+
+\newglossaryentry{off-policy}{
+  name={off-policy},
+  description={Algoritmo de aprendizaje por refuerzo que aprende sobre una política distinta de la que genera los datos, lo que permite reutilizar transiciones pasadas (por ejemplo, con un \textit{replay buffer}). Se contrapone a los métodos \textit{on-policy}}
+}
+
+\newglossaryentry{planificador}{
+    name={planificador},
+    description={Algoritmo que busca la secuencia de acciones, o la jerarquía de tareas, que lleva del estado inicial a un estado objetivo}
+}
+
+\newglossaryentry{replay-buffer}{
+    name={\textit{replay buffer}},
+    description={Memoria que almacena experiencias pasadas del agente para reutilizarlas en las actualizaciones. Propia de los algoritmos de refuerzo \textit{off-policy}}
+}
+
+\newglossaryentry{reward-shaping}{
+    name={\textit{reward shaping}},
+    description={Diseño de recompensas intermedias que guían la exploración del agente, para compensar la escasez de señal en tareas de horizonte largo}
+}
+
+\newglossaryentry{solver}{
+    name={\textit{solver}},
+    description={Programa que resuelve problemas de satisfacción de restricciones o de planificación lógica a partir de un estado y un conjunto de operadores}
+}
+
+\newglossaryentry{woodcutting}{
+    name={\textit{woodcutting}},
+    description={Tarea estándar en los entornos de experimentación de \textit{Minecraft}, centrada en la tala y recolección de madera}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 4 — Metodología y planificación
+% -----------------------------------------------------------------------
+
+\newglossaryentry{framework}{
+    name={\textit{framework}},
+    description={Estructura base de herramientas y convenciones sobre la que se desarrolla un \textit{software}}
+}
+
+\newglossaryentry{gymnasium}{
+    name={\textit{Gymnasium}},
+    description={Librería estándar de \textit{Python} para desarrollar, simular y comparar algoritmos de aprendizaje por refuerzo}
+}
+
+\newglossaryentry{sprint}{
+    name={\textit{sprint}},
+    description={En el marco ágil \textit{Scrum}, ciclo corto y acotado en el tiempo (en este trabajo, la cota es de una semana) en el que el equipo completa una cantidad de trabajo determinada}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 5 — Arquitectura del Sistema
+% -----------------------------------------------------------------------
+
+\newglossaryentry{bioma}{
+    name={bioma},
+    description={Región de un mundo de \textit{Minecraft} con características propias de clima, vegetación y relieve}
+}
+
+\newglossaryentry{endpoint}{
+    name={\textit{endpoint}},
+    description={Punto de acceso (una URL concreta de una \acrshort{api}) a través del cual un cliente se comunica con un servicio para enviar o recibir información}
+}
+
+\newglossaryentry{frame-stacking}{
+    name={\textit{frame-stacking}},
+    description={Apilamiento de fotogramas, que agrupa las últimas observaciones consecutivas del entorno para aportar información temporal al agente}
+}
+
+\newglossaryentry{headless}{
+    name={\textit{headless}},
+    description={Modo de ejecución de un \textit{software} o servidor en segundo plano, sin interfaz gráfica de usuario}
+}
+
+\newglossaryentry{semilla}{
+    name={semilla},
+    description={Valor numérico que sirve de punto de partida a un generador pseudoaleatorio. Se usa para generar mapas idénticos y garantizar la reproducibilidad de los entornos}
+}
+
+\newglossaryentry{stack}{
+    name={\textit{stack}},
+    description={En \textit{Minecraft}, conjunto de objetos del mismo tipo agrupados en una única ranura del inventario (habitualmente hasta 64 unidades)}
+}
+
+\newglossaryentry{raycast}{
+    name={\textit{raycast}},
+    description={Trazado de rayos empleado en gráficos \textit{3D} y videojuegos para detectar colisiones o líneas de visión, lanzando un rayo virtual desde un punto en una dirección dada}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 6 — Iteración I - Agente HTN
+% -----------------------------------------------------------------------
+
+\newglossaryentry{navegacion}{
+    name={navegación},
+    description={Capacidad de un agente para desplazarse de forma autónoma por un entorno tridimensional, planificando rutas y esquivando obstáculos para alcanzar un objetivo}
+}
+
+\newglossaryentry{pathfinder}{
+    name={\textit{pathfinder}},
+    description={Módulo encargado de buscar rutas óptimas (en este trabajo, con el algoritmo A*) para que el agente navegue sorteando obstáculos}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 7 — Iteración II - Agente de Imitación
+% -----------------------------------------------------------------------
+
+\newglossaryentry{backbone}{
+    name={\textit{backbone}},
+    description={Red troncal de un modelo de aprendizaje profundo, encargada de la extracción inicial de características antes de las cabezas específicas de cada tarea}
+}
+
+\newglossaryentry{lstm}{
+  name={LSTM},
+  description={Unidad de memoria recurrente que permite a una red aprender dependencias a largo plazo en secuencias, mitigando el desvanecimiento del gradiente}
+}
+
+\newglossaryentry{overfitting}{
+    name={\textit{overfitting}},
+    description={Sobreajuste de un modelo, que memoriza los datos de entrenamiento pero pierde capacidad de generalizar ante datos nuevos}
+}
+
+\newglossaryentry{token}{
+    name={\textit{token}},
+    description={Unidad mínima en la que se divide una entrada (texto o parches de imagen) para ser procesada por arquitecturas como los \textit{Transformers}}
+}
+
+\newglossaryentry{early-stopping}{
+    name={\textit{early stopping}},
+    description={Técnica de regularización que detiene el entrenamiento cuando el rendimiento en validación deja de mejorar, evitando el sobreajuste}
+}
+
+% -----------------------------------------------------------------------
+% Cap. 8 — Iteración III - Agente de Refuerzo
+% -----------------------------------------------------------------------
+
+\newglossaryentry{baseline}{
+  name={línea base},
+  description={Implementación de referencia con la que se comparan el resto de técnicas. En este trabajo, el agente simbólico (HTN) actúa como línea base interpretable. En inglés, \textit{baseline}}
+}
+
+\newglossaryentry{batch-norm}{
+    name={\textit{BatchNorm}},
+    description={Normalización que reescala las activaciones de una capa usando la media y la varianza de cada \textit{batch}, lo que estabiliza y acelera el entrenamiento}
+}
+
+\newglossaryentry{checkpoint}{
+    name={\textit{checkpoint}},
+    description={Punto de control en el que se guarda el estado completo del modelo (pesos, parámetros y estado del optimizador) para evaluarlo o reanudarlo más tarde}
+}
+
+\newglossaryentry{funcion-recompensa}{
+    name={función de recompensa},
+    description={Función que asigna un valor numérico (recompensa o penalización) a cada transición del agente y define, de forma implícita, el objetivo de la tarea}
+}
+
+\newglossaryentry{group-norm}{
+    name={\textit{GroupNorm}},
+    description={Normalización que divide los canales en grupos y calcula la media y la varianza dentro de cada grupo, de forma independiente del tamaño del \textit{batch}}
+}
+
+\newglossaryentry{max-pooling}{
+    name={\textit{max-pooling}},
+    description={Operación de submuestreo en redes convolucionales que reduce la dimensión espacial conservando solo el valor máximo de cada región}
+}
+
+\newglossaryentry{terminacion}{
+    name={terminación},
+    description={Final real de un episodio, ya sea porque el agente alcanza el objetivo o porque falla de forma irrecuperable (por ejemplo, al morir)}
+}
+
+\newglossaryentry{truncamiento}{
+    name={truncamiento},
+    description={Final de un episodio forzado por una restricción externa (habitualmente, superar el límite máximo de pasos) y no porque la tarea se complete o falle}
+}

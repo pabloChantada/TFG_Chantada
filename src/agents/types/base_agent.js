@@ -1,12 +1,19 @@
 import fs from 'fs';
 import path from 'path';
-import { initBot } from '../../llm/src/utils/mcdata.js';
+import { initBot } from '../bot_factory.js';
 import { logInfo, logError } from '../logging.js';
 import { mineflayer as mineflayerViewer } from 'prismarine-viewer';
 
 
 const DEFAULT_SPAWN_TIMEOUT = 30000; // 30 seconds
-const DEFAULT_VIEW_DISTANCE = 10;
+// Radio de chunks que renderiza el visor en primera persona. Un valor alto
+// (10) hace que el visor del navegador vaya a tirones; para grabar demos basta
+// con ver los árboles cercanos. Se puede bajar con VIEW_DISTANCE="4" sin tocar
+// código (mismo patrón que FIXED_SPAWN). Valores 3-4 → visor fluido.
+const DEFAULT_VIEW_DISTANCE = (() => {
+    const v = parseInt(process.env.VIEW_DISTANCE, 10);
+    return Number.isInteger(v) && v > 0 ? v : 10;
+})();
 const VIEWER_INIT_DELAY = 1000; // Wait 1 second before initializing viewer
 
 export class BaseAgent {
@@ -82,6 +89,13 @@ export class BaseAgent {
                     this.bot.removeAllListeners('physicTick');
                 }
 
+                // Spawn fijo y reproducible (evaluación): teleporta el bot a un punto
+                // conocido —p.ej. un claro de bosque con árboles en el FOV inicial—,
+                // idéntico en cada episodio y para las tres técnicas.
+                //   FIXED_SPAWN="x,y,z"  o  "x,y,z,yaw,pitch"   (grados)
+                // Requiere que el bot sea operador (server/ops.json) para usar /tp.
+                await this._applyFixedSpawn();
+
                 finalize();
             });
 
@@ -91,6 +105,35 @@ export class BaseAgent {
                 finalize(timeoutError);
             }, DEFAULT_SPAWN_TIMEOUT);
         });
+    }
+
+    /**
+     * Teleporta el bot a un punto fijo si se define FIXED_SPAWN, para que cada
+     * episodio (y cada técnica) arranque desde la misma posición y orientación.
+     * Formato: "x,y,z" o "x,y,z,yaw,pitch" (grados). No-op si la variable no está.
+     * Requiere que el bot sea operador para ejecutar /tp.
+     */
+    async _applyFixedSpawn() {
+        const spec = process.env.FIXED_SPAWN;
+        if (!spec) return;
+
+        const parts = spec.split(',').map(s => parseFloat(s.trim()));
+        if (parts.length < 3 || parts.some(n => Number.isNaN(n))) {
+            logError(this.name, new Error(`FIXED_SPAWN inválido: "${spec}" (esperado x,y,z[,yaw,pitch])`));
+            return;
+        }
+
+        const [x, y, z, yaw, pitch] = parts;
+        const facing = parts.length >= 5 ? ` ${yaw} ${pitch}` : '';
+        try {
+            // /tp <bot> x y z [yaw pitch]  — requiere op
+            this.bot.chat(`/tp ${this.name} ${x} ${y} ${z}${facing}`);
+            await this.bot.waitForTicks(20);
+            const p = this.bot.entity.position;
+            logInfo(this.name, `Spawn fijo → (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
+        } catch (e) {
+            logError(this.name, new Error(`No se pudo fijar el spawn (¿bot sin op?): ${e.message}`));
+        }
     }
 
     /**

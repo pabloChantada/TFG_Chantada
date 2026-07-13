@@ -12,7 +12,7 @@
  *   node scripts/mass_record.js --episodes 20 --clean
  *
  * Paso siguiente:
- *   python scripts/prepare_dataset.py --input data/train.jsonl --output data/train_clean.jsonl
+ *   python src/il/data/dataset.py --input data/train.jsonl --output data/train_clean.jsonl
  *
  * SEED: 7145048257670320778
  */
@@ -85,6 +85,29 @@ const args = yargs(hideBin(process.argv))
         description: 'Usar la seed fija de server/seed.txt en lugar de una aleatoria',
         default: false
     })
+    .option('type', {
+        type: 'string',
+        description: 'Tipo de agente a lanzar por episodio (htn para grabar dataset, il para evaluar)',
+        choices: ['htn', 'il', 'rl', 'random'],
+        default: 'htn'
+    })
+    .option('inference-url', {
+        type: 'string',
+        description: 'URL del servidor de inferencia IL (solo --type il)',
+        default: 'http://127.0.0.1:8765'
+    })
+    .option('no-datapack', {
+        type: 'boolean',
+        description: 'No instalar el datapack de bioma único: usa el mundo NORMAL de la semilla '
+                   + '(p.ej. para un spawn ya scouteado con FIXED_SPAWN)',
+        default: false
+    })
+    .option('agent-name', {
+        type: 'string',
+        description: 'Nombre fijo del bot en todos los episodios (en vez de Rec_N). Útil para '
+                   + 'que esté opeado y pueda teleportarse con FIXED_SPAWN.',
+        default: null
+    })
     .help()
     .parse()
 
@@ -117,15 +140,18 @@ function getLastEpisodeNumber(recordingsDir) {
     return max
 }
 
-function runEpisode(episode, agentName, mcPort, viewerPort) {
+function runEpisode(episode, agentName, mcPort, viewerPort, type = 'htn', inferenceUrl = null) {
     return new Promise((resolve) => {
         const agentArgs = [
             'src/agents/add_agent.js',
             '--name', agentName,
-            '--type', 'htn',
+            '--type', type,
             '--minecraft-port', String(mcPort),
             '--viewer-port', String(viewerPort),
         ]
+        if (type === 'il' && inferenceUrl) {
+            agentArgs.push('--inference-url', inferenceUrl)
+        }
 
         console.log(`\n${'─'.repeat(60)}`)
         console.log(`Episodio ${episode}: ${agentName}  viewer=:${viewerPort}`)
@@ -222,6 +248,10 @@ async function main() {
     const serverDir      = path.resolve(args['server-dir'])
     const manageServer   = !args['no-server']
     const fixedSeed      = args['fixed-seed']
+    const agentType      = args.type
+    const inferenceUrl   = args['inference-url']
+    const singleBiome    = !args['no-datapack']
+    const fixedAgentName = args['agent-name']
 
     console.log('╔══════════════════════════════════════════════════╗')
     console.log('║            MASS RECORDING — IL DATASET          ║')
@@ -286,7 +316,7 @@ async function main() {
         // Arrancar servidor con mundo nuevo
         if (manageServer) {
             try {
-                const server = await startServer(serverDir, episodeMcPort, { useSeed: fixedSeed })
+                const server = await startServer(serverDir, episodeMcPort, { useSeed: fixedSeed, singleBiome })
                 currentServer = server.process
                 console.log(`[MASS] Episodio ${ep} — seed=${server.seed} — mcPort=${episodeMcPort}`)
             } catch (e) {
@@ -297,8 +327,8 @@ async function main() {
         }
 
         const beforeFiles = listRecordingJsonlFiles(recordingsDir)
-        const agentName = generateAgentName(ep)
-        const result = await runEpisode(ep, agentName, episodeMcPort, basePort)
+        const agentName = fixedAgentName || generateAgentName(ep)
+        const result = await runEpisode(ep, agentName, episodeMcPort, basePort, agentType, inferenceUrl)
         const afterFiles = listRecordingJsonlFiles(recordingsDir)
         const newFiles = diffNewFiles(beforeFiles, afterFiles)
 
@@ -359,7 +389,7 @@ async function main() {
     console.log(`Dataset éxitos:              ${outputSuccess}  (${totalSuccessLines} frames)`)
     console.log(`Dataset fallidos:            ${outputFailed}  (${totalFailedLines} frames)`)
     console.log('\nPara limpiar y preparar el dataset antes de entrenar:')
-    console.log(`  python scripts/prepare_dataset.py --input ${outputJsonl} --output data/train_clean.jsonl`)
+    console.log(`  python src/il/data/dataset.py --input ${outputJsonl} --output data/train_clean.jsonl`)
 }
 
 main().catch(err => {

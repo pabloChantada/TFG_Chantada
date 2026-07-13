@@ -267,7 +267,7 @@ async function validateSetup(serverDir) {
  * @param {boolean} opts.useSeed - Si true, lee la seed de server/seed.txt; si no, genera una aleatoria
  * @returns {Promise<{process: ChildProcess, seed: string|number}>}
  */
-async function startServer(serverDir, port = 25565, { useSeed = false } = {}) {
+async function startServer(serverDir, port = 25565, { useSeed = false, singleBiome = true } = {}) {
     const seed = useSeed ? readSeedFile(serverDir) : generateSeed()
 
     const portBusy = await isPortInUse(port)
@@ -275,10 +275,12 @@ async function startServer(serverDir, port = 25565, { useSeed = false } = {}) {
         throw new Error(`El puerto ${port} está en uso antes de arrancar Paper. Usa otro puerto o cierra el proceso que lo ocupa.`)
     }
 
-    console.log(`[SERVER] Preparando mundo nuevo — seed=${seed}`)
+    console.log(`[SERVER] Preparando mundo nuevo — seed=${seed}${singleBiome ? '' : ' (mundo normal, sin datapack)'}`)
 
     deleteWorlds(serverDir)
-    installSingleBiomeDatapack(serverDir)
+    // El datapack fuerza un bioma único bosque. Se omite (--no-datapack) cuando se
+    // quiere el mundo NORMAL de la semilla (p.ej. un spawn concreto ya scouteado).
+    if (singleBiome) installSingleBiomeDatapack(serverDir)
     ensureEula(serverDir)
     writeServerProperties(serverDir, seed, port)
 

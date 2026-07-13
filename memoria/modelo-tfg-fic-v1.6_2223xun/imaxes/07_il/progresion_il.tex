@@ -1,0 +1,15 @@
+\begin{table}[hp!]
+  \centering
+  \small
+  \rowcolors{2}{white}{udcgray!25}
+  \begin{tabular}{l|r|r|r}
+  \rowcolor{udcpink!25}
+  \textbf{Variante} & \textbf{Acc. validación (\%)} & \textbf{Loss acción} & \textbf{MSE cámara} \\\hline
+  Solo estado & 69.4 & 0.749 & 0.1087 \\
+  Visual (GRU) & 77.3 & 1.193 & 0.1251 \\
+  Visual (ConvLSTM) & 74.7 & 0.839 & 0.1257 \\
+  Visual (ViT) & 73.2 & 0.865 & 0.1322 \\
+  \end{tabular}
+  \caption{Progresión de diseño de la iteración (métricas de validación).}
+  \label{tab:progresion-il}
+\end{table}

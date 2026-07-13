@@ -1,140 +1,54 @@
-# Dependencias
+# ─── Dependencias / entornos ────────────────────────────────────
 node_modules/
-
-# Entorno
 .venv
 .venv.*
+.env
 
-# Logs
-*.log
-logs/
-
-# Sistema operativo
+# ─── Sistema / IDE ──────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
-.env
-# Build
+.claude/
+
+# ─── Python / build ─────────────────────────────────────────────
+__pycache__/
+*.pyc
 dist/
 build/
-
-# Evaluation & Metrics
-agents.json
-agents_*.json
-
-# Ignorar todo en memories y metrics excepto archivos de ejemplo
-src/agents/memories/*
-!src/agents/memories/*example*
-
-agent_metrics/
-src/evaluation/README_VAE.md
-# Ignorar modelos
-vae_minecraft.pth
-.github
-legacy/
-
-################################
-###### Proyecto LLM Agent ######
-################################
-src/llm/keys.json
-llm/.vscode/
-llm/.idea/
-llm/node_modules/
-llm/package-lock.json
-llm/code_records/
-llm/scratch.js
-llm/bots/**/action-code/**
-llm/bots/**/
-llm/keys.json
-llm/services/viaproxy/jars/**
-llm/services/viaproxy/logs/**
-llm/services/viaproxy/plugins/**
-llm/services/viaproxy/ViaLoader/**
-llm/services/viaproxy/saves.json
-llm/services/viaproxy/viaproxy.yml
-llm/tmp/
-llm/wandb/
-llm/experiments/
-llm/andy_*.json
-llm/jill_*.json
-llm/src/models/logs/*
-llm/server_data/*
-llm/results/*
-llm/tasks/construction_tasks/test_multiagent_construction_tasks.json
-llm/tasks/construction_tasks/train_multiagent_construction_tasks.json
-llm/tasks/construction_tasks/test/**
-llm/tasks/construction_tasks/train/**
-llm/server_data*
-llm/**/.DS_Store
-llm/src/mindcraft-py/__pycache__/
-llm/.vscode/
-llm/.idea/
-llm/node_modules/
-llm/package-lock.json
-llm/code_records/
-llm/scratch.js
-llm/bots/**/action-code/**
-llm/bots/**/
-llm/keys.json
-llm/services/viaproxy/jars/**
-llm/services/viaproxy/logs/**
-llm/services/viaproxy/plugins/**
-llm/services/viaproxy/ViaLoader/**
-llm/services/viaproxy/saves.json
-llm/services/viaproxy/viaproxy.yml
-llm/tmp/
-llm/wandb/
-llm/experiments/
-llm/andy_*.json
-llm/jill_*.json
-llm/src/models/logs/*
-llm/server_data/*
-llm/results/*
-llm/tasks/construction_tasks/test_multiagent_construction_tasks.json
-llm/tasks/construction_tasks/train_multiagent_construction_tasks.json
-llm/tasks/construction_tasks/test/**
-src/evaluation/plots/*.png
-src/evaluation/README_VAE.mddata/*
-data/*.jsonl
-data/**/*.json
-*/dagger/frames/*
-# YOLO
-runs/*
-data/Minecraft Tree Detection.yolov8/
-*.pt
-__pycache__/
 .gradio
 
-plots/
-models/
-runs/
-icons/
-plots/
-data/recordings/
-
-# Runs RL: incluir json y png (las negaciones deben ir después de runs/)
-!src/rl/runs/**/*.json
-!src/rl/runs/**/*.png
-!src/rl/visual/runs/
-!src/rl/visual/runs/**/
-!src/rl/visual/runs/**/*.json
-!src/rl/visual/runs/**/*.png
-src/rl/visual/runs/**/*.pth
-# Paper server
-server/
-train_balanced.jsonl
-train_cleaned.jsonl
-legacy/
+# ─── Logs ───────────────────────────────────────────────────────
+*.log
+logs/
 inference_logs/
-data/MineRLTreechop-v0.zip
-data/MineRLTreechop-v0/*
 
+# ─── Modelos y pesos entrenados ─────────────────────────────────
+*.pt
+*.pth
+
+# ─── Datos: datasets, grabaciones y evaluaciones son locales ────
+data/
+
+# ─── Salidas de entrenamiento / evaluación (generadas) ──────────
+runs/                       # carpetas de runs de RL/IL (checkpoints, métricas)
+agent_metrics/
+agents.json
+agents_*.json
+# Memorias de agentes en runtime (se conserva el ejemplo, si lo hubiera)
+src/agents/memories/
+!src/agents/memories/*example*
+
+# ─── Servidor Minecraft (Paper) ─────────────────────────────────
+server/
+
+# ─── Memoria (TFG): fuentes LaTeX y PDF sí; vídeos y gifs pesados no ─
+memoria/videos/
+memoria/**/gifs/
+
+# ─── Artefactos LaTeX ───────────────────────────────────────────
 *.aux
 *.out
-*.log
 *.acn
 *.glo
 *.ist
@@ -142,3 +56,7 @@ data/MineRLTreechop-v0/*
 *.lot
 *.toc
 *.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg

@@ -37,7 +37,8 @@ from torch.utils.data import IterableDataset, DataLoader
 
 _RL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_RL_DIR / "shared"))
-sys.path.insert(0, str(_RL_DIR / "visual"))
+sys.path.insert(0, str(_RL_DIR / "visual" / "models"))
+sys.path.insert(0, str(_RL_DIR / "visual" / "algorithms"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from constants import (HYBRID_FLAGS, N_HYBRID_FLAGS, IMG_SIZE,

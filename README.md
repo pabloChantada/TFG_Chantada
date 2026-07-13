@@ -1,6 +1,6 @@
-# AI Agents in Minecraft — Comparing HTN, Imitation Learning & Reinforcement Learning
+# AI Agents in Minecraft — HTN vs Imitation vs Reinforcement Learning
 
-> Bachelor's thesis exploring classical and modern AI approaches to autonomous agent control in a complex 3D environment.
+> Bachelor's thesis comparing a hand-crafted planner against learned agents on autonomous control in a 3D complex world; using **woodcutting** as a benchmark task.
 
 ![Node.js](https://img.shields.io/badge/Node.js-ES2022-339933?logo=node.js&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
@@ -8,213 +8,135 @@
 ![Minecraft](https://img.shields.io/badge/Minecraft-Java%201.21-62B47A?logo=minecraft&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
----
+<p align="center">
+  <img src="docs/figures/demo_htn.gif" width="45%" alt="HTN agent chopping wood" />
+  &nbsp;
+  <img src="docs/figures/demo_il.gif" width="45%" alt="Imitation-learning agent chopping wood" />
+  <br>
+  <em>Left: HTN planner (100% success). Right: imitation-learning agent, GRU backbone (52%).</em>
+</p>
 
 ## Overview
 
-This project implements and compares four fundamentally different approaches for controlling an autonomous Minecraft bot. The HTN planner solves the full wood → stone → iron progression; the learned agents (IL, RL) focus on the **woodcutting** sub-task — a non-trivial benchmark that already requires visual perception, navigation and inventory awareness.
+Three families of agents are compared using a Minecraft bot on the same **woodcutting** task
+(chop ≥ 5 logs). The task demands visual perception,
+navigation, alignment and a sparse reward.
 
-| Approach | Description |
+| Approach | What it is |
 |---|---|
-| **HTN** | Hierarchical Task Network — hand-crafted rule-based planner (full progression) |
-| **IL**  | Imitation Learning — CNN/ViT + recurrent head trained on HTN expert demonstrations (dual-head: discrete action + continuous camera) |
-| **RL**  | Reinforcement Learning — custom PyTorch implementations of DQN, PPO, SAC (discrete) and Hybrid SAC (MineRL-style hybrid action space), plus a SAC + DAgger variant guided by a symbolic tutor |
-| **LLM** *(experimental)* | LLM-driven agent built on top of [mindcraft](https://github.com/mindcraft-bots/mindcraft), vendored under `src/llm/` |
+| **HTN** | Hierarchical Task Network; a hand-crafted, rule-based planner. |
+| **IL**  | Imitation Learning; a visual + recurrent model trained on HTN demonstrations. Dual head: discrete action + continuous camera. |
+| **RL**  | Reinforcement Learning; a custom PyTorch DQN, PPO and SAC, plus a SAC + DAgger variant with a symbolic tutor. |
 
-The core question: *can learned agents match or exceed a hand-crafted planner in a non-deterministic, partially observable 3D world?*
+**The question:** *can a learned agent match a hand-crafted planner on this task?*
 
----
+> **TL;DR** — HTN **100%** ≫ best imitation agent (GRU) **52%** ≫ best RL agent (PPO) **12%**.
+> Imitation *quadruples* RL on this task. Details in [Results](#results).
 
-## Architecture
+## Results
 
-```
-Minecraft Java Server
-        │
-        ├── HTN Agent (Node.js)     ← rule-based task decomposition (full progression)
-        ├── IL Agent  (Node.js)     ← queries FastAPI inference server each frame
-        └── RL Agent  (Node.js)     ← exposes HTTP bridge to Python Gymnasium env
+Protocol: **50 episodes** per technique, same world, max **200 steps**. Success = **≥ 5 logs**.
 
-                    │
-            Mineflayer Bot API
-         (actions, world state, events)
+| Technique | Success (%) | Logs / ep (μ) | Time / ep (s) |
+|---|:--:|:--:|:--:|
+| **HTN** (planner, upper bound) | **100.0** | 6.00 | 26.7 |
+| **IL-GRU** (CNN + GRU + LSTM) | **52.0** | 3.84 | 156.2 |
+| IL-ViT (timm ViT + LSTM) | 46.0 | 3.48 | 156.7 |
+| RL-PPO | 12.0 | 2.14 | 114.6 |
+| RL-RANDOM *(baseline)* | 6.0 | 1.50 | 97.6 |
+| RL-SAC | 4.0 | 1.62 | 110.6 |
+| IL-STATE (no vision) | 4.0 | 0.54 | 195.8 |
+| RL-DQN | 2.0 | 1.10 | 117.6 |
+| IL-ConvLSTM | 0.0 | 0.08 | 203.0 |
 
-Python Layer
-        ├── IL  : dual-head model  →  discrete action (9 classes) + camera regression (dyaw, dpitch)
-        │         backbones: GRU + LSTM | ConvLSTM | ViT (timm) + LSTM
-        │         └── FastAPI inference server (port 8765)
-        │
-        └── RL  : Gymnasium env (HTTP bridge, port 8766)
-                  ├── state-only   : DQN over normalised state vector
-                  └── visual       : DQN | PPO | SAC discrete | Hybrid SAC | SAC + DAgger | random baseline
-                                     + reactive symbolic policy (tutor for DAgger)
-```
+- The **HTN is the ceiling**: perfect success, ~27 s per episode — but it relies on privileged world knowledge.
+- **Imitation beats reinforcement 4×** (52% vs 12%).
+- **DQN and SAC don't beat random** at the ≥5-log bar: more time and compute would be needed to
+  learn a strong policy. They *do* solve the task at lower thresholds — e.g. PPO scores 78% at
+  ≥1 log and 64% at ≥2, but only 12% at ≥5.
 
-**Data pipeline (IL):**
-```
-HTN gameplay  →  dataset_recorder.js  →  prepare_dataset.py  →  main.py (training)
-(expert demos)    (screenshot + state      (balance, mirror,       (CNN/ViT + recurrent head,
-                   + action + camera)       filter outliers)        CE on actions + MSE on camera)
-```
+<p align="center">
+  <img src="docs/figures/demo_rl.gif" width="45%" alt="Reinforcement-learning agent (PPO) chopping wood" />
+  <br>
+  <em>Reinforcement-learning agent (PPO) — approaches trees but rarely finishes the ≥5-log target.</em>
+</p>
 
-**Optional MineRL warm-start (Hybrid SAC):**
-```
-MineRL Treechop-v0  →  bc_pretrain.py  →  hybrid_actor.pth  →  train_hybrid_sac.py --bc-ckpt
-(human demonstrations) (BCE flags + MSE camera)               (online fine-tune on Mineflayer)
-```
+Full analysis (Spanish): [**memoria_tfg.pdf**](memoria/modelo-tfg-fic-v1.6_2223xun/memoria_tfg.pdf).
 
----
+## How it works
 
-## Tech Stack
+Each agent is a Node.js process driving the bot through [Mineflayer](https://github.com/PrismarineJS/mineflayer);
+the learned agents talk to a Python layer over HTTP.
 
-**Bot & game interface**
-- [Mineflayer](https://github.com/PrismarineJS/mineflayer) — Minecraft bot API
-- `mineflayer-pathfinder`, `mineflayer-pvp`, `mineflayer-collectblock`, `mineflayer-auto-eat`, `mineflayer-armor-manager` — bot capabilities
-- [Prismarine-viewer](https://github.com/PrismarineJS/prismarine-viewer) — 3D world viewer (Three.js)
+<p align="center">
+  <img src="docs/figures/architecture.png" width="85%" alt="System architecture: Node.js agents over Mineflayer, IL via FastAPI inference server, RL via Gymnasium HTTP bridge" />
+</p>
 
-**Machine Learning**
-- PyTorch 2.5 + CUDA 12.1 — all models trained from scratch (no Stable-Baselines3)
-- TorchVision — ResNet backbones (ImageNet pretrained, partial fine-tuning)
-- [timm](https://github.com/huggingface/pytorch-image-models) — ViT backbone (`vit_small_patch16_224`, adapted to 128×128)
-- Gymnasium 1.2 — RL environment interface
-- FastAPI + Uvicorn — real-time IL inference server
-- GradCAM — model interpretability
+**Pipeline:** HTN gameplay -> `dataset_recorder.js` (screenshot + state + action + camera)
+-> `dataset.py` / `load_dataset.py` (clean + augment) -> `main.py` (train).
 
-**Data collection**
-- Puppeteer — automated screenshot capture from Prismarine-viewer
-- Custom JSONL pipeline for (screenshot, state, action, camera_delta) tuples
-- MineRL Treechop-v0 (optional) — ~453k human transitions used for Hybrid SAC BC pretrain
+**Task & reward (woodcutting):** rewards for hitting/breaking/collecting logs, a small per-step
+penalty and a success bonus; episodes end on the log target, a step cap, or a reward floor.
+Full action/state/reward specs are in the thesis.
 
----
+## Quickstart
 
-## Action & state spaces
-
-**IL action space** — 9 discrete actions (`move_forward_jump`, `move_forward_sprint`, `move_backward_walk`, `move_left`, `move_right`, `jump`, `sneak`, `attack`, `equip_wooden_axe`) **+ continuous camera regression** `(dyaw, dpitch) ∈ [-1, 1]²`.
-
-**RL discrete action space (visual / state-only)** — 7 actions: `attack`, `move_forward_sprint`, `move_forward_jump`, `camera_{left, right, up, down}`. Camera steps: 0.15 rad horizontal, 0.10 rad vertical.
-
-**RL hybrid action space (Hybrid SAC, MineRL-style)** — 4 concurrent Bernoulli flags `{forward, jump, sprint, attack}` × 2D Gaussian camera `(dyaw, dpitch) ∈ [±0.5 rad]` (≈ p99 of the human MineRL dataset).
-
-**State vector** — 8 normalised components (RL): `yaw, pitch, dx, dz, tree_visible, tree_distance, log_count, is_looking_at_log`. IL uses 9 components (adds absolute `x, y, z`).
-
-**Reward shaping (woodcutting)** — `break_log = +20`, `collect_log = +10`, `hit_tree = +0.5`, per-step penalty `-0.01`, episode-success bonus `+30`, early-termination penalty `-5`. Episode ends on 1 log collected, 300 steps, or cumulative reward below −20.
-
----
-
-## Results *(preliminary)*
-
-> Full evaluation in progress. Metrics will be updated as experiments complete.
-
-- **HTN**: consistent task completion across the full progression, zero learning overhead, brittle to edge cases.
-- **IL**: dual-head model generalises visual patterns from expert demos; ViT backbone outperforms ResNet on the held-out split.
-- **RL**: SAC discrete is the most stable on the woodcutting sub-task; the symbolic-tutor DAgger variant accelerates early exploration. Hybrid SAC + MineRL BC pretrain is the closest match to a human-like control scheme.
-
----
-
-## Project Structure
-
-```
-src/
-├── agents/                       # Node.js agent wrappers (HTN, IL, RL) + logging
-├── htn/                          # HTN planner
-│   ├── primitives/               #   blocks, mining, movement, wood, inventory, structures
-│   ├── progression/              #   phase orchestrator (chop / iron progression)
-│   └── tasks/                    #   crafting, smelting, block placement
-├── il/                           # Imitation Learning
-│   ├── dataset_recorder.js       #   HTN-time recorder (screenshot + state + action + camera)
-│   ├── load_dataset.py           #   dataset + mirror augmentation
-│   ├── model.py                  #   RNNExtractor (CNN+GRU+LSTM), ViTExtractor (timm)
-│   ├── model_convlstm.py         #   ConvLSTM backbone variant
-│   ├── main.py                   #   training (CE on actions + MSE on camera)
-│   ├── inference_server.py       #   FastAPI server (port 8765)
-│   └── plots.py                  #   training curves, GradCAM
-├── rl/
-│   ├── shared/                   # env.py (Gymnasium HTTP bridge), constants.py, metrics.py
-│   ├── state/                    # State-only DQN (no images)
-│   ├── visual/                   # Visual RL
-│   │   ├── dqn.py / train.py / eval.py
-│   │   ├── ppo.py / train_ppo.py
-│   │   ├── sac.py / train_sac.py
-│   │   ├── hybrid_sac.py / train_hybrid_sac.py
-│   │   ├── train_sac_dagger.py   #   SAC + symbolic tutor (DAgger-style)
-│   │   ├── symbolic.py           #   reactive rule-based tutor
-│   │   ├── train_random.py       #   uniform-random baseline
-│   │   └── eval_policy.py        #   greedy eval for PPO / SAC / Hybrid SAC
-│   └── minerl/                   # MineRL Treechop-v0 utilities
-│       ├── eda.py                #   action-distribution analysis
-│       ├── map_actions.py        #   MineRL → hybrid action vector
-│       └── bc_pretrain.py        #   BC pretrain of HybridActor
-├── llm/                          # LLM agent (vendored mindcraft, experimental)
-└── evaluation/                   # HTN metrics + plots + GradCAM icons
-scripts/
-├── run.js                        # Launch agents (--agents htn,rl --names …)
-├── mass_record.js                # Automated HTN episode recording
-├── dataset.py / sweep.py / cleanup_runs.py
-└── paper_server.js               # Headless Minecraft server helper
-docs/
-├── IL_PIPELINE.md                # Detailed IL pipeline notes
-└── bitacora/                     # Thesis log (Spanish)
-```
-
----
-
-## Getting Started
-
-**Prerequisites:** Minecraft Java Edition server (1.21.x), Node.js 20+, Python 3.11+, CUDA-capable GPU (for training).
+**Requires:** Minecraft Java server (1.21.x), Node.js 20+, Python 3.11+, and a CUDA GPU for training.
 
 ```bash
-# Install dependencies
 npm install
 pip install -r requirements.txt
 
-# ── HTN ───────────────────────────────────────────────────────────────────
+# HTN — run the planner (also records the IL dataset)
 node scripts/run.js --agents htn --names HTNBot
-
-# Mass-record HTN episodes (builds the IL dataset)
 node scripts/mass_record.js
 
-# ── IL ────────────────────────────────────────────────────────────────────
-# Train (pick backbone: rnn | convlstm | vit)
-python src/il/main.py --dataset data/train.jsonl --model vit --epochs 30
-
-# Inference server + IL agent
-python src/il/inference_server.py --model src/il/runs/<run>/best_model.pt
+# IL — train a backbone (rnn | convlstm | vit), then serve + run the agent
+python src/il/train/main.py --dataset data/train.jsonl --model vit --epochs 30
+python src/il/serve/inference_server.py --model <run>/best_model.pt
 node scripts/run.js --agents il --names ILBot
 
-# ── RL ────────────────────────────────────────────────────────────────────
-# Launch the Node bridge first
+# RL — launch the Node bridge, then train / evaluate
 node scripts/run.js --agents rl --names RLBot
-
-# State-only DQN
-python src/rl/state/train.py --episodes 200
-
-# Visual: DQN | PPO | SAC discreto | Hybrid SAC | SAC + tutor simbólico | random
-python src/rl/visual/train.py             --episodes 600
-python src/rl/visual/train_ppo.py         --episodes 600
-python src/rl/visual/train_sac.py         --episodes 600
-python src/rl/visual/train_hybrid_sac.py  --episodes 600 [--bc-ckpt PATH]
-python src/rl/visual/train_sac_dagger.py  --episodes 600
-python src/rl/visual/train_random.py      --episodes 600
-
-# Evaluate a trained checkpoint
-python src/rl/visual/eval_policy.py --algo sac --checkpoint <run>/sac_final.pth --episodes 15
+python src/rl/state/train.py                    --episodes 200   # state-only DQN
+python src/rl/visual/train/train_sac.py         --episodes 600   # or train_ppo / train / train_hybrid_sac / train_sac_dagger / train_random
+python src/rl/visual/eval/eval_policy.py --algo sac --checkpoint <run>/sac_final.pth --episodes 15
 ```
 
----
+## Project structure
+
+```
+src/
+├── agents/                # Node.js agent wrappers (HTN, IL, RL) + bot factory
+├── htn/                   # HTN planner: primitives / progression / tasks
+├── il/                    # Imitation learning
+│   ├── models/            #   model (CNN+GRU/ViT) + ConvLSTM variant
+│   ├── data/              #   dataset recorder (js) + loading/augmentation
+│   ├── train/             #   training (dual head) + plots/GradCAM
+│   ├── serve/             #   FastAPI inference server + test client
+│   └── analysis/          #   confusion matrices, backbone comparison
+├── rl/                    # Reinforcement learning
+│   ├── shared/            #   Gymnasium HTTP bridge, constants, metrics
+│   ├── state/             #   state-only DQN (no images)
+│   ├── visual/            #   visual RL, by role: algorithms / models / train / eval
+│   └── minerl/            #   MineRL Treechop utilities (Hybrid SAC warm-start)
+└── evaluation/            # comparative harness + plotting + GradCAM icons
+scripts/                   # Node launchers: run, mass_record, reset_world, paper_server
+docs/figures/              # README figures (demo GIFs + architecture diagram)
+memoria/                   # Bachelor's thesis (LaTeX sources + PDF, Spanish)
+```
+
+## Tech stack
+
+**Bot:** Mineflayer (+ pathfinder / pvp / collectblock / auto-eat / armor-manager),
+Prismarine-viewer, Puppeteer (screenshot capture).
+**ML:** PyTorch 2.5 (CUDA 12.1), TorchVision, [timm](https://github.com/huggingface/pytorch-image-models)
+(ViT), Gymnasium, FastAPI + Uvicorn (inference server), GradCAM. All models trained from
+scratch.
 
 ## Context
 
-This is my Bachelor's Thesis (TFG) at UDC. The goal is both a technical implementation and a comparative study — not just making agents work, but understanding *why* each paradigm succeeds or fails in this environment.
-
-The HTN solves the full wood → stone → iron progression; the learned agents focus on the **woodcutting sub-task** because it already exposes the hardest control problems (visual perception, navigation, alignment, sparse reward) without requiring multi-task curricula — making it a meaningful benchmark across all four approaches.
-
-
-<!-- Copy-paste in your Readme.md file -->
-
-<a href="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution?period=all_times&user_id=147641118" target="_blank" style="display: block" align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution/thumbnail.png?period=all_times&user_id=147641118&image_size=auto&color_scheme=dark" width="721" height="auto">
-    <img alt="Contribution Time Distribution of @pabloChantada" src="https://next.ossinsight.io/widgets/official/analyze-user-contribution-time-distribution/thumbnail.png?period=all_times&user_id=147641118&image_size=auto&color_scheme=light" width="721" height="auto">
-  </picture>
-</a>
-
-<!-- Made with [OSS Insight](https://ossinsight.io/) -->
+Bachelor's Thesis (TFG) at UDC. The goal was not just to make the agents work, but to
+understand *why* each paradigm succeeds or fails: the HTN solves the full wood progression but needs
+world information to work, while the trained agents perform worse but provide more flexibility and a bigger horizon for generalization. 
+The task is small on purpose, but  still presents hard challenges in AI training: perception, navigation, alignment, sparse reward.

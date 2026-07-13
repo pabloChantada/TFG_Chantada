@@ -20,6 +20,7 @@ import { logInfo, logError }       from '../logging.js'
 import puppeteer                   from 'puppeteer'
 import minecraftData               from 'minecraft-data'
 import { findNearestVisibleBlock } from '../../htn/primitives/blocks.js'
+import { startEpisodeTracker }     from '../episode_metrics.js'
 
 // ── Configuración ─────────────────────────────────────────────────────────────
 const INFERENCE_HOST  = 'localhost'
@@ -190,6 +191,14 @@ export class ILAgent extends BaseAgent {
         this._recordDir     = null
         this._recordStream  = null
         this._lastAction    = null  // Última acción ejecutada (para umbral de cambio)
+
+        // ── Modo evaluación (un episodio acotado → métricas unificadas) ──────────
+        // Activado por variables de entorno para no tocar el plumbing de lanzamiento:
+        //   IL_EVAL=1  IL_EVAL_MAX_STEPS=200  IL_EVAL_TARGET=5
+        this._evalMode     = process.env.IL_EVAL === '1' || process.env.IL_EVAL === 'true'
+        this._evalMaxSteps = parseInt(process.env.IL_EVAL_MAX_STEPS || '200', 10)
+        this._evalTarget   = parseInt(process.env.IL_EVAL_TARGET   || '5',   10)
+        this._tracker      = null
     }
 
     // ── Inicio ────────────────────────────────────────────────────────────────
@@ -252,6 +261,16 @@ export class ILAgent extends BaseAgent {
 
     async runLogic() {
         this._running = true
+
+        if (this._evalMode) {
+            this._tracker = startEpisodeTracker(this.bot, {
+                technique: 'il',
+                target:    this._evalTarget,
+                label:     process.env.IL_EVAL_LABEL || null,   // p.ej. gru → eval_gru.jsonl
+            })
+            logInfo(this.name, `Modo evaluación: maxSteps=${this._evalMaxSteps} target=${this._evalTarget}`)
+        }
+
         try {
             while (this._running) {
                 const t0 = Date.now()
@@ -309,6 +328,22 @@ export class ILAgent extends BaseAgent {
                 }
 
                 await executeILAction(this.bot, action, camera_delta)
+
+                // ── Terminación del episodio en modo evaluación ──────────────────
+                if (this._evalMode && this._tracker) {
+                    this._tracker.recordAction(action)
+                    const st = this._tracker.state()
+                    // Parar en cuanto se alcanza el objetivo de troncos recogidos, igual que
+                    // el criterio de éxito de summarize_eval. No se exige logs_broken >= 1: en
+                    // esta tarea no se puede recoger un tronco sin romperlo, y el sensor de
+                    // roturas por evento es poco fiable (a veces no salta).
+                    const success = st.logs_collected >= this._evalTarget
+                    if (success || this._stepCount >= this._evalMaxSteps) {
+                        this._tracker.finish(success, this._stepCount)
+                        this._tracker = null
+                        this._running = false   // el finally hace shutdown + exit
+                    }
+                }
 
                 const remaining = STEP_INTERVAL_MS - (Date.now() - t0)
                 if (remaining > 0) await sleep(remaining)

@@ -90,6 +90,7 @@ class MinecraftRLEnv(gym.Env):
         max_steps:       int  = MAX_STEPS,
         logs_to_success: int  = LOGS_TO_SUCCESS,
         hybrid:          bool = False,
+        cumulative_reward_threshold: float | None = CUMULATIVE_REWARD_THRESHOLD,
     ):
         super().__init__()
         self.bridge_url      = f"http://localhost:{bridge_port}"
@@ -100,6 +101,7 @@ class MinecraftRLEnv(gym.Env):
         self._max_steps      = max_steps
         self._logs_to_success = max(1, int(logs_to_success))
         self.hybrid          = hybrid
+        self._cumulative_reward_threshold = cumulative_reward_threshold
 
         # ── Espacio de observaciones ──────────────────────────────────────────
         obs_dim     = STATE_DIM * self.frame_stack
@@ -213,7 +215,8 @@ class MinecraftRLEnv(gym.Env):
             reward    += REWARD_SUCCESS
             success    = True
 
-        elif self._cumulative_reward + reward < CUMULATIVE_REWARD_THRESHOLD:
+        elif (self._cumulative_reward_threshold is not None
+              and self._cumulative_reward + reward < self._cumulative_reward_threshold):
             terminated = True
             reward    += REWARD_DONE_PENALTY
 
@@ -402,7 +405,9 @@ class MinecraftRLEnv(gym.Env):
         url = self.bridge_url + path
         for attempt in range(retries):
             try:
-                r = requests.post(url, json=payload, timeout=15)
+                # 30s de margen: un step puede acumular dig (hasta 8s) + captura de
+                # screenshot (hasta 8s) + esperas de física; 15s se quedaba corto.
+                r = requests.post(url, json=payload, timeout=30)
                 r.raise_for_status()
                 return r.json()
             except Exception as exc:

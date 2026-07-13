@@ -1,0 +1,81 @@
+\chapter{Introducción}
+\label{chap:introduccion}
+
+\lettrine{L}{os} entornos virtuales en \textit{3D} han resultado ser buenos escenarios para
+la investigación de algoritmos de \gls{ia}.
+A diferencia de entornos de juegos clásicos como el ajedrez, los entornos virtuales en \textit{3D} ofrecen
+percepción visual en diferentes perspectivas (primera persona, tercera persona, etc.),
+espacios de acción continuos o de alta dimensionalidad y características temporales complejas,
+aumentando mucho más su dificultad y acercándolos más al funcionamiento del mundo
+real~\cite{DBLP:journals/nature/SilverHMGSDSAPL16,DBLP:journals/nature/VinyalsBCMDCCPE19}.
+Plataformas como Atari~\cite{DBLP:journals/nature/MnihKSRVBGRFOPB15} o VizDoom~\cite{kempka2016vizdoom}
+han sido referentes clave para el uso de aprendizaje por refuerzo y planificación autónoma
+en los videojuegos.
+
+Dentro de esta familia de entornos virtuales, \textit{Minecraft} ocupa un lugar singular.
+Se trata de un videojuego \textit{3D} de mundo abierto en primera persona
+centrado en la recolección de recursos, la construcción de estructuras,
+la fabricación de objetos y la supervivencia~\cite{guss2019minerl}. Se caracteriza por sus mundos, 
+generados de forma procedimental y formados por bloques que el jugador
+puede modificar, lo que genera un espacio de acciones grande y variado.
+A diferencia de otros entornos de referencia, \textit{Minecraft} carece de un objetivo 
+único predefinido, lo que obliga a los agentes a planificar
+horizontes temporales largos con recompensas dispersas y, a menudo,
+a trabajar en situaciones nunca vistas durante el entrenamiento.
+
+El desafío más complejo que presenta el juego consiste en derrotar al \textit{Ender Dragon},
+un jefe final que requiere la planificación y ejecución de una gran red de tareas anidadas entre sí.
+Tarea que aún no ha sido completada usando únicamente agentes autónomos, sin ninguna intervención humana.
+
+A nivel de progreso, todos los objetivos que plantee el jugador pueden alcanzarse de varias formas y empleando diferentes herramientas.
+A partir de esta premisa, los jugadores pueden fabricar materiales y objetos específicos que requieren la recolección previa 
+de una variedad de recursos, lo que da lugar a un complejo sistema de creación organizado como un árbol jerárquico
+(véase el Apéndice~\ref{apx:iron-pickaxe}).
+
+Como ejemplo, si el jugador quisiera un pico de hierro debería: recolectar primero madera rompiendo un árbol, luego fabricar una mesa de trabajo para 
+fabricar nuevos objetos; dentro de ella, fabricar un pico de madera para recolectar piedra y, a continuación, un pico de piedra 
+con el que extraer carbón y mineral de hierro; después, construir un horno para fundir el mineral y obtener lingotes de hierro para, 
+finalmente, fabricar el pico de hierro. Además, el jugador debe encontrar en el mundo todos los recursos necesarios.
+
+Esta tarea, que puede parecer sencilla para un jugador humano, supone un gran desafío para
+los algoritmos de \gls{ia}, ya que tanto el entorno como el espacio de acciones son muy grandes y complejos,
+y presentan además un fuerte componente temporal difícil de capturar.
+
+Ante este desafío se pueden aplicar paradigmas de \gls{ia} muy diferentes entre sí,
+desde la planificación simbólica basada en conocimiento experto
+hasta el aprendizaje a partir de imitación o usando la propia interacción con el entorno.
+Este trabajo, por tanto, compara estas tres familias: planificación jerárquica de tareas (\gls{htn}),
+aprendizaje por imitación (\gls{il}) y aprendizaje por refuerzo (\gls{rl}), sobre una misma tarea
+en \textit{Minecraft} y bajo idénticas condiciones de evaluación, con el fin de analizar
+las fortalezas y limitaciones de cada enfoque y 
+la relación entre conocimiento experto, datos y coste de cómputo.
+
+\section{Objetivos}
+El trabajo plantea las siguientes metas finales:
+\begin{itemize}
+    \item Diseñar e implementar agentes autónomos basados en distintos paradigmas de \gls{ia}. Específicamente \gls{htn}, \gls{il} y \gls{rl}, enfocados en la resolución de tareas en \textit{Minecraft}.
+    \item Desarrollar, en caso necesario, conjuntos de datos específicos que permitan el entrenamiento de los modelos seleccionados.
+    \item Definir métricas adecuadas para la evaluación del rendimiento de los agentes en el entorno.
+    \item Analizar y comparar el rendimiento, eficacia y limitaciones de cada paradigma.
+    \item Combinar sistemas de forma eficiente, utilizando diferentes lenguajes de programación para el desarrollo de modelos 
+    y el control de agentes, así como la comunicación entre distintos entornos de desarrollo.
+\end{itemize}
+
+\section{Estructura de la Memoria}
+La organización de este trabajo es la siguiente: tras el
+Capítulo~\ref{chap:introduccion} de introducción, se hace una revisión del estado del arte en el
+Capítulo~\ref{chap:sota}, enfocado en técnicas de \gls{ia} aplicadas a videojuegos y, 
+en particular, \textit{Minecraft}. A continuación, el
+Capítulo~\ref{chap:marco_teorico} introduce los fundamentos teóricos de las tres familias
+de técnicas comparadas (\gls{htn}, \gls{il} y \gls{rl}), mientras que el Capítulo~\ref{chap:metodologia} detalla la metodología de
+desarrollo, las fases del proyecto, su planificación y los conjuntos de datos empleados. El
+Capítulo~\ref{chap:arquitectura} describe la arquitectura del sistema común a todas las
+iteraciones. Sobre esta arquitectura se construyen las tres iteraciones que forman el núcleo del
+trabajo: el Capítulo~\ref{chap:iter1} introduce al agente \gls{htn}, que actúa de experto;
+el Capítulo~\ref{chap:iter2}, el agente \gls{il} que aprende clonando a dicho experto;
+y el Capítulo~\ref{chap:iter3}, el agente \gls{rl} que aprende desde cero por interacción
+con el entorno. Tras esto, en el Capítulo~\ref{chap:discusion-resultados} se comparan las tres
+técnicas bajo una métrica común y se analiza la relación entre conocimiento experto, datos
+y coste de cómputo. Por último, se dedica el Capítulo~\ref{chap:conclusions}
+a exponer las conclusiones y las posibles líneas futuras de investigación
+obtenidas del análisis realizado en el trabajo.

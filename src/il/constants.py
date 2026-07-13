@@ -38,20 +38,20 @@ CAMERA_BOUNDS = {
 SEQ_LEN = 4
 
 # ── State vector ──────────────────────────────────────────────────────────────
-# Orden canónico del vector de estado (9 componentes).
-# dx/dz se calculan en load_dataset a partir de frames consecutivos.
-STATE_KEYS = ["x", "y", "z", "yaw", "pitch", "dx", "dz",
+# Orden canónico del vector de estado (6 componentes).
+# La posición absoluta (x, y, z) se excluye igual que en el agente de refuerzo:
+# con coordenadas absolutas la red memoriza posiciones del mundo en lugar de
+# aprender a talar. El movimiento útil ya queda capturado por dx/dz (calculadas
+# en load_dataset a partir de x/z de frames consecutivos).
+STATE_KEYS = ["yaw", "pitch", "dx", "dz",
               "tree_visible", "tree_distance"]
 
-STATE_DIM = len(STATE_KEYS)  # 9
+STATE_DIM = len(STATE_KEYS)  # 6
 
 # Bounds fijos para normalización a [-1, 1].
 # Preferimos bounds conocidos del entorno (no data-driven) para que la
 # normalización sea estable entre rebuilds del dataset.
 STATE_BOUNDS = {
-    "x":              (-200,    200),
-    "y":              (0,       256),
-    "z":              (-200,    200),
     "yaw":            (-math.pi, math.pi),      # mineflayer → radianes
     "pitch":          (-math.pi/2, math.pi/2),   # mineflayer → radianes
     "dx":             (-1,       1),

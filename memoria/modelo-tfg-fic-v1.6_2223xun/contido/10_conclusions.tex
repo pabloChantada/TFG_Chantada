@@ -1,0 +1,67 @@
+\chapter{Conclusiones}
+\label{chap:conclusions}
+
+\lettrine{L}{os} objetivos planteados al comienzo del trabajo se han cumplido satisfactoriamente.
+El punto de partida fue diseñar una arquitectura común que permitiese a los agentes
+compartir entorno, observaciones y protocolo de evaluación, combinando
+\textit{Node.js} para el control de bots con \textit{Mineflayer}
+y \textit{Python} para los modelos de \gls{ia}.
+Además, fue necesario tratar la integración entre el servidor \textit{Java} de \textit{Minecraft},
+\textit{Node.js} y \textit{Python}, que fue una fuente constante de problemas de sincronización, aunque la arquitectura final es estable y funcional.
+Otra de las dificultades fue la captura de imágenes en tiempo real y tener que almacenarlas junto al
+vector de estado al que pertenecían, ya que la obtención de las imágenes y el vector de estado no estaban
+sincronizados de base.
+
+Sobre este \gls{framework} se implementaron los tres
+agentes: el planificador \gls{htn} (Capítulo~\ref{chap:iter1}), los agentes de imitación
+(Capítulo~\ref{chap:iter2}) y los agentes de refuerzo con tres algoritmos distintos
+(\gls{dqn}, \gls{ppo} y \gls{sac}) (Capítulo~\ref{chap:iter3}).
+
+Para que el aprendizaje por imitación fuese posible fue necesario crear un conjunto de datos
+propio, recogiendo las ejecuciones del planificador \gls{htn} en vivo. 
+La comparación entre técnicas exigió definir una evaluación rigurosa y
+reproducible (Sección~\ref{sec:eval-metodologia}, página~\pageref{sec:eval-metodologia}):
+misma semilla, punto de aparición fijo, número de episodios y una métrica de éxito común
+($\geq \num{5}$ troncos talados y recogidos), 
+preservando la restricción de no omnisciencia: imagen en primera persona y estado restringido
+al \gls{fov}, sin acceso a posiciones exactas ni visión a través de obstáculos.
+
+Los resultados, recogidos en el Capítulo~\ref{chap:discusion-resultados}, permiten extraer
+varias conclusiones. La principal es la importancia del conocimiento experto; 
+las dos mejores técnicas (\gls{htn} e \gls{il}) son precisamente las que lo utilizan. 
+Conviene mencionar que la superioridad del \gls{htn} es intrínseca a este tipo de tareas; al operar sobre conocimiento codificado a mano, siempre va a realizar la tarea de la mejor forma posible. Sin embargo, esa misma dependencia es su límite, ya que su extensión a jerarquías mucho más complejas no es sencilla y exige un esfuerzo de modelado que crece con la complejidad del dominio.
+El \gls{il} reduce el coste de entrenamiento respecto al
+refuerzo y obtiene un mejor rendimiento, ya que aprende de un experto y puede enfocarse en la
+explotación de la tarea en lugar de explorar desde cero. El \gls{rl}, sin embargo, es capaz
+de descubrir comportamientos que el experto no enseñó: en la \gls{dqn}, el agente aprende a
+talar bloques adyacentes (superior e inferior respecto al bloque talado) 
+que el \gls{il} no presenta, y consigue una
+navegación más adaptada a su percepción y espacio de acciones. Esta capacidad de
+generalización tiene el coste de requerir un presupuesto de cómputo mayor: el espacio
+de acciones con temporalidad fija y la recompensa escasa y diferida limitaron el
+número de interacciones posibles, evidenciando que la cantidad de recursos es un factor
+determinante para esta familia de técnicas. Como se menciona en el
+Capítulo~\ref{chap:sota}, la mayoría de trabajos relacionados utilizan presupuestos de
+cómputo y datos de magnitudes mucho mayores; bajo un escenario ideal, los agentes
+dispondrían de un horizonte de rendimiento significativamente más amplio.
+
+El trabajo utiliza muchas de las competencias enseñadas en la titulación: ingeniería de software,
+desde el desarrollo con \textit{Scrum} hasta el uso de \acrshort{http} para la comunicación entre modelos; 
+análisis y manejo de datos, con la creación del \textit{dataset} y la
+evaluación de los agentes; e inteligencia artificial, desde algoritmos con enfoques clásicos como
+\gls{htn} hasta aproximaciones profundas como \gls{rl} e \gls{il}. 
+Además, incorpora herramientas fuera del plan de estudios, como
+\textit{Node.js}, servidores \textit{Java} o entornos de simulación \textit{3D},
+necesarias para llevar el trabajo a cabo, lo que refleja la capacidad de investigar
+y adoptar nuevas tecnologías para la realización de proyectos.
+
+\section{Trabajo Futuro}
+\label{sec:conclu-futuro}
+Las líneas de trabajo más prometedoras aprovechan la complementariedad entre los tres
+paradigmas. Por ejemplo, combinar el \gls{htn} como tutor de exploración en un bucle \gls{rl} tipo
+\gls{dagger}~\cite{DBLP:journals/jmlr/RossGB11} permitiría guiar al agente de refuerzo con conocimiento
+experto y acelerar significativamente su convergencia. En paralelo, ampliar el \textit{dataset} de
+demostración y explorar otras arquitecturas para el \gls{il} podría extender sus capacidades.
+A más largo plazo, el \gls{framework} desarrollado
+ofrece una base para escalar la comparación a tareas de mayor complejidad jerárquica dentro de
+\textit{Minecraft}, como la obtención de diamante o la construcción de estructuras.

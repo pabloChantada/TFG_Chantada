@@ -69,6 +69,13 @@ import { logInfo, logError } from './logging.js';
                 description: `Usar seed fija desde server/seed.txt (sólo --type rl con --server-dir)`,
                 default: false,
             })
+            .option(`no-datapack`, {
+                type: `boolean`,
+                description: `No instalar el datapack de bioma único: usar el mundo NORMAL de la seed `
+                           + `(sólo --type rl con --server-dir). Iguala las condiciones de HTN/IL para `
+                           + `evaluar con FIXED_SPAWN en un spawn ya scouteado.`,
+                default: false,
+            })
             .help()
             .example(`node src/agents/add_agent.js --name MyBot --type htn`, `Launch HTN agent`)
             .example(`node src/agents/add_agent.js -n TestBot -t htn -mp 25565 -vp 3000`, `Launch with custom ports`)
@@ -100,10 +107,6 @@ import { logInfo, logError } from './logging.js';
         } else if (agentType === `il`) {
             const { ILAgent } = await import(`./types/il_agent.js`);
             AgentClass = ILAgent;
-        } else if (agentType === `llm`) {
-            // TODO: Implement LLMAgent and import here, its easy but not the focus right now
-            logError(agentName, new Error(`LLM agent type not implemented yet`));
-            process.exit(1); 
         }
         else {
             throw new Error(`Unknown agent type: ${agentType}`);
@@ -116,8 +119,9 @@ import { logInfo, logError } from './logging.js';
             agent = new AgentClass(agentName, undefined, args.record);
         } else if (agentType === `rl`) {
             agent = new AgentClass(agentName, undefined, {
-                serverDir: args[`server-dir`] || null,
-                useSeed:   args[`use-seed`]   || false,
+                serverDir:   args[`server-dir`] || null,
+                useSeed:     args[`use-seed`]   || false,
+                singleBiome: !args[`no-datapack`],
             });
         } else {
             agent = new AgentClass(agentName);

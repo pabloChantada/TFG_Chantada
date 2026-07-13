@@ -17,6 +17,8 @@
 
 import http          from 'http'
 import path          from 'path'
+import fs            from 'fs'
+import puppeteer     from 'puppeteer'
 import { BaseAgent } from './base_agent.js'
 import { logInfo, logError } from '../logging.js'
 import minecraftData from 'minecraft-data'
@@ -25,6 +27,10 @@ import { validateSetup, startServer, stopServer } from '../../../scripts/paper_s
 
 // ── Configuración ─────────────────────────────────────────────────────────────
 const BRIDGE_PORT      = 8766
+const VIEWER_WIDTH      = 854   // dimensiones del render del viewer (env lo reescala a IMG_SIZE)
+const VIEWER_HEIGHT     = 480
+const BROWSER_WARMUP_MS = 2000  // espera inicial a que el viewer renderice
+const SHOT_FAIL_LIMIT   = 3     // capturas fallidas seguidas antes de recrear Puppeteer
 const STEP_HOLD_MS     = 50     // ms que se mantiene una acción de movimiento (1 tick MC)
 const CAMERA_TURN_RAD  = 0.15   // ~8.6° por step de camera_right / camera_left
 const CAMERA_PITCH_RAD = 0.10   // ~5.7° por step de camera_up / camera_down
@@ -220,7 +226,7 @@ export class RLAgent extends BaseAgent {
      *                                        Si se indica, el agente gestiona el servidor.
      * @param {boolean}     opts.useSeed    - Usar seed fija de server/seed.txt
      */
-    constructor(agentName, bridgePort = BRIDGE_PORT, { serverDir = null, useSeed = false } = {}) {
+    constructor(agentName, bridgePort = BRIDGE_PORT, { serverDir = null, useSeed = false, singleBiome = true } = {}) {
         super(agentName, 'rl')
         this._bridgePort      = bridgePort
         this._httpServer      = null   // servidor HTTP del bridge
@@ -231,9 +237,17 @@ export class RLAgent extends BaseAgent {
         this._isDead          = false
         this._spawnPos        = null
 
+        // Captura visual (Puppeteer sobre prismarine-viewer), para que el env
+        // reciba la imagen en primera persona en cada /step y /reset.
+        this._browser = null
+        this._page    = null
+        this._shotFailStreak = 0      // capturas fallidas seguidas → dispara recuperación
+        this._recovering     = false  // evita recreaciones concurrentes de Puppeteer
+
         // Gestión del servidor Minecraft (opcional)
         this._serverDir  = serverDir ? path.resolve(serverDir) : null
         this._useSeed    = useSeed
+        this._singleBiome = singleBiome   // false = mundo normal (--no-datapack), igual que HTN/IL
         this._mcServer   = null   // proceso del servidor Paper
         this._settings   = null   // guardado para reconexión
         this._viewerPort = null   // guardado para re-inicializar tras world reset
@@ -251,7 +265,7 @@ export class RLAgent extends BaseAgent {
                 const { process: mcProc, seed } = await startServer(
                     this._serverDir,
                     settings.port,
-                    { useSeed: this._useSeed }
+                    { useSeed: this._useSeed, singleBiome: this._singleBiome }
                 )
                 this._mcServer = mcProc
                 logInfo(this.name, `Servidor listo (seed=${seed})`)
@@ -261,6 +275,9 @@ export class RLAgent extends BaseAgent {
 
             if (viewerPort) {
                 await this.setupViewer(viewerPort)
+                await this._startPuppeteer(viewerPort)
+            } else {
+                logInfo(this.name, 'Sin --viewer-port: el env recibirá imágenes en negro (modo state-only)')
             }
 
             this._startBridgeServer()
@@ -289,6 +306,91 @@ export class RLAgent extends BaseAgent {
             this._isDead = true
             logInfo(this.name, 'Bot murió')
         })
+    }
+
+    // ── Captura visual (Puppeteer) ────────────────────────────────────────────
+
+    /**
+     * Abre un navegador headless sobre el prismarine-viewer para capturar la
+     * vista en primera persona del bot. El env Python la recibe en base64 en
+     * cada respuesta del bridge (campo `screenshot`).
+     */
+    async _startPuppeteer(viewerPort) {
+        try {
+            if (this._browser) { try { await this._browser.close() } catch (_) {} }
+            this._browser = await puppeteer.launch({ headless: 'new' })
+            this._page    = await this._browser.newPage()
+            await this._page.setViewport({ width: VIEWER_WIDTH, height: VIEWER_HEIGHT })
+            await this._page.goto(`http://localhost:${viewerPort}`, {
+                waitUntil: 'domcontentloaded',
+                timeout:   15000,
+            })
+            await this._page.waitForSelector('canvas', { timeout: 10000 })
+            await sleep(BROWSER_WARMUP_MS)
+            logInfo(this.name, 'Puppeteer listo (captura visual activa)')
+        } catch (e) {
+            logError(this.name, new Error(`No se pudo iniciar Puppeteer: ${e.message}. El env recibirá imágenes en negro.`))
+            this._page = null
+        }
+    }
+
+    /**
+     * Captura el canvas del viewer y lo devuelve como string base64 (PNG).
+     * Devuelve "" si no hay página (modo state-only) o si la captura falla.
+     * @returns {Promise<string>}
+     */
+    async _captureScreenshot() {
+        if (!this._page) return ''
+        try {
+            const canvas = await this._page.$('canvas')
+            if (!canvas) return ''
+            // Timeout en la captura: si Puppeteer se cuelga (degradación tras horas
+            // o tras un world_reset), devolvemos "" para ese step en vez de bloquear
+            // el bridge y tirar el entrenamiento por timeout en el lado Python.
+            const SHOT_TIMEOUT_MS = 8000
+            const b64 = await Promise.race([
+                canvas.screenshot({ type: 'png', encoding: 'base64' }),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('screenshot timeout')), SHOT_TIMEOUT_MS)),
+            ])
+            this._shotFailStreak = 0   // captura OK → resetear racha de fallos
+            // Verificación del visor: con RL_DEBUG_SHOT=1 vuelca el último frame a
+            // disco para confirmar visualmente que NO es negro (que el visor capta).
+            if (process.env.RL_DEBUG_SHOT && b64) {
+                try {
+                    fs.writeFileSync('data/_rl_last_frame.png', Buffer.from(b64, 'base64'))
+                } catch (_) { /* no romper el step por el debug */ }
+            }
+            return b64
+        } catch (e) {
+            logError(this.name, new Error(`Screenshot fallido: ${e.message}`))
+            // Recuperación: si Puppeteer falla repetidamente (página colgada tras
+            // horas o tras un world_reset), recrear la página para no quedarse ciego
+            // en negro de forma permanente. No-await: no bloquea el step.
+            this._shotFailStreak += 1
+            if (this._shotFailStreak >= SHOT_FAIL_LIMIT && !this._recovering && this._viewerPort) {
+                this._recoverPuppeteer()
+            }
+            return ''
+        }
+    }
+
+    /**
+     * Recrea la página de Puppeteer cuando la captura lleva varios fallos seguidos.
+     * Se ejecuta en segundo plano (sin await desde el step) para no bloquear.
+     */
+    async _recoverPuppeteer() {
+        if (this._recovering) return
+        this._recovering = true
+        logError(this.name, new Error(`Puppeteer: ${this._shotFailStreak} capturas fallidas seguidas, recreando página...`))
+        try {
+            await this._startPuppeteer(this._viewerPort)
+            this._shotFailStreak = 0
+            logInfo(this.name, 'Puppeteer recuperado tras fallos de captura')
+        } catch (e) {
+            logError(this.name, new Error(`Recuperación de Puppeteer falló: ${e.message}`))
+        } finally {
+            this._recovering = false
+        }
     }
 
     // ── Servidor HTTP ─────────────────────────────────────────────────────────
@@ -369,7 +471,8 @@ export class RLAgent extends BaseAgent {
         await sleep(waitMs)
 
         return {
-            state:  this._getState(),
+            state:      this._getState(),
+            screenshot: await this._captureScreenshot(),
             events: {
                 blocks_broken:     [...this._blocksBroken],
                 is_attacking_tree: this._isAttackingTree,
@@ -391,11 +494,19 @@ export class RLAgent extends BaseAgent {
             this.bot.once('spawn', onSpawn)
         })
 
-        const { x, y, z } = this._spawnPos
-        this.bot.chat(`/tp RLBot ${x} ${y} ${z}`)
+        // En evaluación (FIXED_SPAWN definido) reproducimos EXACTAMENTE el spawn
+        // inicial — posición Y orientación (yaw/pitch)— para que todos los episodios
+        // (y todas las técnicas) arranquen idénticos. En entrenamiento, sin
+        // FIXED_SPAWN, volvemos a la posición registrada del spawn scouteado.
+        if (process.env.FIXED_SPAWN) {
+            await this._applyFixedSpawn()
+        } else {
+            const { x, y, z } = this._spawnPos
+            this.bot.chat(`/tp RLBot ${x} ${y} ${z}`)
+        }
         await sleep(500)
 
-        return { state: this._getState() }
+        return { state: this._getState(), screenshot: await this._captureScreenshot() }
     }
 
     async _handleWorldReset() {
@@ -417,7 +528,7 @@ export class RLAgent extends BaseAgent {
         const { process: mcProc, seed } = await startServer(
             this._serverDir,
             this._settings.port,
-            { useSeed: this._useSeed }
+            { useSeed: this._useSeed, singleBiome: this._singleBiome }
         )
         this._mcServer = mcProc
         logInfo(this.name, `Nuevo mundo listo (seed=${seed}). Reconectando bot...`)
@@ -425,6 +536,9 @@ export class RLAgent extends BaseAgent {
         await this._connectAndSetup()
         if (this._viewerPort) {
             await this.setupViewer(this._viewerPort)
+            // El viewer anterior quedó muerto al reconectar el bot: recrear la
+            // página de Puppeteer contra el nuevo render.
+            await this._startPuppeteer(this._viewerPort)
         }
         logInfo(this.name, 'World reset completado')
         return { ok: true, managed: true, seed: String(seed) }
@@ -482,6 +596,11 @@ export class RLAgent extends BaseAgent {
     // ── Shutdown ──────────────────────────────────────────────────────────────
 
     async _shutdown() {
+        if (this._browser) {
+            try { await this._browser.close() } catch (_) {}
+            this._browser = null
+            this._page    = null
+        }
         if (this._httpServer) {
             await new Promise(r => this._httpServer.close(r))
             this._httpServer = null
